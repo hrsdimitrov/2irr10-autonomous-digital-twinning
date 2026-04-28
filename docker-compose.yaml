@@ -1,0 +1,22 @@
+services:
+  ros:
+    build: .
+    image: turtlebot3_ws
+    container_name: turtlebot3_container
+
+    network_mode: host
+
+    environment:
+      - DISPLAY=${DISPLAY}
+      - TURTLEBOT3_MODEL=burger
+
+    volumes:
+      - .:/ws
+      - /mnt/wslg/.X11-unix:/tmp/.X11-unix
+
+    working_dir: /ws
+
+    stdin_open: true
+    tty: true
+
+    command: bash
