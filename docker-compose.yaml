@@ -19,4 +19,4 @@ services:
     stdin_open: true
     tty: true
 
-    command: bash
+    command: tail -f /dev/null

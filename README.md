@@ -1,11 +1,23 @@
 This repository contains all relevant code and documentation for the 2IRR10 Autonomous Digital Twinning project. 
 
-# Setup
+# Deployment
 
 1. Create Docker image: `docker compose build`
-2. Start container: `docker compose run --rm ros`
+2. Start container: `docker compose up -d`
 
-Inside the bash shell:
-1. Build workspace: `colcon build`
-2. Load workspace into ROS: `source install/setup.bash`
-3. Start the robot system: `ros2 launch my_tb3_world new_world.launch.py`
+## Terminal 1 - Simulation
+1. Open new bash: `docker exec -it turtlebot3_container bash`
+2. Run simulation: `bash scripts/run-sim.sh`
+
+## Terminal 2 - Teleop
+1. Open new bash: `docker exec -it turtlebot3_container bash`
+2. Run teleop: `bash scripts/teleop.sh`
+
+## Terminal 3 - RViz
+1. Open new bash: `docker exec -it turtlebot3_container bash`
+2. Run RViz`bash scripts/rviz.sh`
+
+
+## Stopping the container
+
+To stop the container run `docker compose down`.
