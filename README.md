@@ -25,3 +25,5 @@ To stop the container run `docker compose down`.
 ## Running on Ubuntu
 
 Replace `/mnt/wslg/.X11-unix:/tmp/.X11-unix` with `/tmp/.X11-unix:/tmp/.X11-unix` in the `docker-compose.yaml` file.
+
+Add `LIBGL_ALWAYS_SOFTWARE=1` under `enviroment` in the `docker-compose.yaml` file.
