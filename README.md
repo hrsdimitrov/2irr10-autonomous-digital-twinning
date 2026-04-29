@@ -21,3 +21,7 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 ## Stopping the container
 
 To stop the container run `docker compose down`.
+
+## Running on Ubuntu
+
+Replace `/mnt/wslg/.X11-unix:/tmp/.X11-unix` with `/tmp/.X11-unix:/tmp/.X11-unix` in the `docker-compose.yaml` file.
