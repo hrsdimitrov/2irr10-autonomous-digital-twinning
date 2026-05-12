@@ -13,7 +13,7 @@ def generate_launch_description():
     # Get paths to needed packages
     launch_file_dir = os.path.join(get_package_share_directory('turtlebot3_gazebo'), 'launch')
     ros_gz_sim_share = get_package_share_directory('ros_gz_sim')
-    my_pkg_share     = get_package_share_directory('my_tb3_world')
+    my_pkg_share     = get_package_share_directory('nitrobot_world')
 
     # Set launch arguments. Set initial position of robot
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
@@ -21,7 +21,7 @@ def generate_launch_description():
     y_pose = LaunchConfiguration('y_pose', default='0.0')
 
     # path to the 3d model world file
-    world = os.path.join(my_pkg_share, 'worlds', 'new_world.world')
+    world = os.path.join(my_pkg_share, 'worlds', 'farm_world.world')
 
     # Add TurtleBot3 models to Gazebo search path
     set_env_vars_resources  = AppendEnvironmentVariable('GZ_SIM_RESOURCE_PATH', os.path.join(
