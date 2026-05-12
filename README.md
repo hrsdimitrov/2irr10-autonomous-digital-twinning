@@ -3,6 +3,7 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 # Deployment
 
 1. Create Docker image: `docker compose build`
+2. Run `xhost +local:docker`
 2. Start container: `docker compose up -d`
 
 ## Terminal 1 - Simulation
