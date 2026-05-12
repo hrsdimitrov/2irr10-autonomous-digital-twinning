@@ -1,30 +1,18 @@
 This repository contains all relevant code and documentation for the 2IRR10 Autonomous Digital Twinning project. 
 
-# Deployment
+# Docker Container
 
 1. Create Docker image: `docker compose build`
-2. Run `xhost +local:docker`
-2. Start container: `docker compose up -d`
-
-## Terminal 1 - Simulation
-1. Open new bash: `docker exec -it turtlebot3_container bash`
-2. Run simulation: `bash scripts/run-sim.sh`
-
-## Terminal 2 - Teleop
-1. Open new bash: `docker exec -it turtlebot3_container bash`
-2. Run teleop: `bash scripts/teleop.sh`
-
-## Terminal 3 - RViz
-1. Open new bash: `docker exec -it turtlebot3_container bash`
-2. Run RViz`bash scripts/rviz.sh`
+2. Run `xhost +local:docker` before starting the container
+3. Start container: `docker compose up -d`
+4. Open new bash: `docker exec -it turtlebot3_container bash`
+5. Stop the container: To stop the container run `docker compose down`.
 
 
-## Stopping the container
+# Inside the container
 
-To stop the container run `docker compose down`.
+## Building the project
 
-## Running on Ubuntu
-
-Replace `/mnt/wslg/.X11-unix:/tmp/.X11-unix` with `/tmp/.X11-unix:/tmp/.X11-unix` in the `docker-compose.yaml` file.
-
-Add `LIBGL_ALWAYS_SOFTWARE=1` under `enviroment` in the `docker-compose.yaml` file.
+1. `cd /ws`
+2. `colcon build`
+3. `source install/setup.bash`
