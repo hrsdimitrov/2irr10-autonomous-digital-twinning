@@ -11,8 +11,12 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 
 # Inside the container
 
+# Launch Gazebo world
+
+`ros2 launch nitrobot_world farm_world.launch.py`
+
 ## Building the project
 
 1. `cd /ws`
-2. `colcon build`
+2. `colcon build --symlink-install`
 3. `source install/setup.bash`
