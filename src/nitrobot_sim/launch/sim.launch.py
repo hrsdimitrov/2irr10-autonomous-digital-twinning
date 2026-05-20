@@ -23,10 +23,10 @@ def generate_launch_description():
 
     turtlebot3_gazebo_share = get_package_share_directory("turtlebot3_gazebo")
     ros_gz_sim_share = get_package_share_directory("ros_gz_sim")
-    nitrobot_world_share = get_package_share_directory("nitrobot_world")
+    nitrobot_sim_share = get_package_share_directory("nitrobot_sim")
 
     launch_file_dir = os.path.join(turtlebot3_gazebo_share, "launch")
-    world = os.path.join(nitrobot_world_share, "worlds", "farm_world.world")
+    world = os.path.join(nitrobot_sim_share, "worlds", "farm_world.world")
 
     declare_use_sim_time = DeclareLaunchArgument(
         "use_sim_time",
