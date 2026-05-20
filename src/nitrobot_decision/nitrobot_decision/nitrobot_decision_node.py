@@ -11,8 +11,10 @@ class NitrobotDecisionNode(Node):
         super().__init__("nitrobot_decision_node")
 
         self.declare_parameter("target_zone", "zone_1")
+        self.declare_parameter("battery_log_interval_sec", 5.0)
 
         self._last_published = None
+        self._latest_battery_state = None
         self.publisher = self.create_publisher(String, "/nitrobot/target_zone", 10)
         self.add_on_set_parameters_callback(self._on_parameters_changed)
 
@@ -26,10 +28,13 @@ class NitrobotDecisionNode(Node):
             10,
         )
 
+        battery_log_interval = self.get_parameter("battery_log_interval_sec").value
+        self.create_timer(battery_log_interval, self._log_battery_state)
+
         self.get_logger().info(
             "Publishing /nitrobot/target_zone "
             f"(current: {self.get_parameter('target_zone').value}); "
-            "subscribed to /nitrobot/battery_state"
+            f"battery logged every {battery_log_interval}s"
         )
 
     def _on_parameters_changed(self, params):
@@ -50,7 +55,13 @@ class NitrobotDecisionNode(Node):
             self.get_logger().info(f"Published target zone: {zone}")
 
     def _battery_state_callback(self, msg: String):
-        self.get_logger().info(f"Battery state: {msg.data}")
+        self._latest_battery_state = msg.data
+
+    def _log_battery_state(self):
+        if self._latest_battery_state is None:
+            self.get_logger().info("Battery state: no data received yet")
+            return
+        self.get_logger().info(f"Battery state: {self._latest_battery_state}")
 
 
 def main(args=None):

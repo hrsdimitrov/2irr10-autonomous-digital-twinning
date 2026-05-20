@@ -9,7 +9,7 @@ from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
 FORWARD_LINEAR_X = 0.15
-MOVE_DURATION_SEC = 1.0
+MOVE_DURATION_SEC = 5.0
 
 
 class NitrobotMediatorNode(Node):
