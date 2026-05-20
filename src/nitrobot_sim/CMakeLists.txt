@@ -15,7 +15,7 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY launch
+  DIRECTORY launch worlds maps
   DESTINATION share/${PROJECT_NAME}
 )
 
