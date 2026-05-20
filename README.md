@@ -22,6 +22,14 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 
 `ros2 run nitrobot_sim sim_teleop.sh`
 
+## Digital twin (decision + mediator)
+
+```bash
+ros2 launch nitrobot_decision decision.launch.py
+ros2 launch nitrobot_mediator mediator.launch.py
+ros2 run nitrobot_decision set_zone.sh zone_2
+```
+
 ## Physical robot
 
 `ros2 run nitrobot_real real_teleop.sh`
