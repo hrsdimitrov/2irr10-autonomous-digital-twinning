@@ -82,6 +82,11 @@ class NitrobotMediatorNode(Node):
         self._move_linear_x = linear_x
         self._move_angular_z = angular_z
         self._publish_twist(linear_x, angular_z)
+        if linear_x != 0.0 or angular_z != 0.0:
+            self.get_logger().info(
+                f"Move command: linear.x={linear_x}, angular.z={angular_z} "
+                f"({CMD_VEL_PUBLISH_HZ:.0f} Hz for {MOVE_DURATION_SEC:.0f}s)"
+            )
         period = 1.0 / CMD_VEL_PUBLISH_HZ
         self.move_timer = self.create_timer(period, self._publish_move_tick)
 
@@ -108,11 +113,6 @@ class NitrobotMediatorNode(Node):
         real_msg.linear.x = linear_x
         real_msg.angular.z = angular_z
         self.real_pub.publish(real_msg)
-
-        if linear_x != 0.0 or angular_z != 0.0:
-            self.get_logger().info(
-                f"Move command: linear.x={linear_x}, angular.z={angular_z}"
-            )
 
     def _battery_state_callback(self, msg: BatteryState):
         battery_percent, status = self._normalize_battery(msg.percentage)
