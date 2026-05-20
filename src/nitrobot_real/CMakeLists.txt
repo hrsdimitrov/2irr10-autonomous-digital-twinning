@@ -16,7 +16,6 @@ endif()
 
 install(
   PROGRAMS
-  scripts/real_bringup.sh
   scripts/real_teleop.sh
   DESTINATION lib/${PROJECT_NAME}
 )
