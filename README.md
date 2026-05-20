@@ -46,3 +46,7 @@ exec ros2 launch turtlebot3_bringup robot.launch.py --ros-args \
   -r /odom:=/real/odom \
   -r /scan:=/real/scan
 ```
+
+```
+ros2 topic pub /battery_state sensor_msgs/msg/BatteryState \ "{voltage: 11.4, percentage: 0.82}" -r 1
+```
