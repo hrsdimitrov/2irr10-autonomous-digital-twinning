@@ -11,7 +11,11 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 
 # Inside the container
 
-# Launch Gazebo world
+# Launch Gazebo simulation (/sim topics)
+
+`ros2 launch nitrobot_sim sim.launch.py`
+
+Legacy (un-namespaced topics):
 
 `ros2 launch nitrobot_world farm_world.launch.py`
 `ros2 launch nitrobot_world nitrobot_bringup.launch.py`
@@ -42,4 +46,10 @@ ros2 launch turtlebot3_bringup robot.launch.py \
   -r /tf_static:=/real/tf_static
 ```
 
-`ros2 launch nitrobot_world real_robot_bridge.launch.py`
+Sim topics: `/sim/cmd_vel`, `/sim/odom`, `/sim/scan`, `/sim/tf`
+
+```bash
+ros2 topic pub --once /sim/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.15}, angular: {z: 0.0}}"
+ros2 topic echo /sim/scan --once
+ros2 topic echo /sim/odom --once
+```
