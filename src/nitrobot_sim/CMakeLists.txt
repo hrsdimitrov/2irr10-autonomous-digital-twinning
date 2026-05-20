@@ -19,4 +19,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+  PROGRAMS
+  scripts/sim_teleop.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
