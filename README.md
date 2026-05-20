@@ -15,6 +15,8 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 
 `ros2 launch nitrobot_sim sim.launch.py`
 
+Teleop (second terminal): `ros2 run nitrobot_sim sim_teleop.sh`
+
 Legacy (un-namespaced topics):
 
 `ros2 launch nitrobot_world farm_world.launch.py`
