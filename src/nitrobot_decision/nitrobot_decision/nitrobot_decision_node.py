@@ -19,9 +19,17 @@ class NitrobotDecisionNode(Node):
         self._publish_zone(self.get_parameter("target_zone").value)
         self.create_timer(2.0, self._republish_zone)
 
+        self.create_subscription(
+            String,
+            "/nitrobot/battery_state",
+            self._battery_state_callback,
+            10,
+        )
+
         self.get_logger().info(
             "Publishing /nitrobot/target_zone "
-            f"(current: {self.get_parameter('target_zone').value})"
+            f"(current: {self.get_parameter('target_zone').value}); "
+            "subscribed to /nitrobot/battery_state"
         )
 
     def _on_parameters_changed(self, params):
@@ -40,6 +48,9 @@ class NitrobotDecisionNode(Node):
         if zone != self._last_published:
             self._last_published = zone
             self.get_logger().info(f"Published target zone: {zone}")
+
+    def _battery_state_callback(self, msg: String):
+        self.get_logger().info(f"Battery state: {msg.data}")
 
 
 def main(args=None):

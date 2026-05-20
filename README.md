@@ -30,6 +30,8 @@ ros2 launch nitrobot_mediator mediator.launch.py
 ros2 run nitrobot_decision set_zone.sh zone_2
 ```
 
+`ros2 topic echo /nitrobot/battery_state`
+
 ## Physical robot
 
 `ros2 run nitrobot_real real_teleop.sh`
