@@ -11,7 +11,7 @@ class NitrobotDecisionNode(Node):
         super().__init__("nitrobot_decision_node")
 
         self.declare_parameter("target_zone", "zone_1")
-        self.declare_parameter("battery_log_interval_sec", 5.0)
+        self.declare_parameter("battery_log_interval_sec", 30.0)
 
         self._last_published = None
         self._latest_battery_state = None
