@@ -8,7 +8,7 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
-FORWARD_LINEAR_X = 0.05
+FORWARD_LINEAR_X = 0.15
 MOVE_DURATION_SEC = 1.0
 
 
