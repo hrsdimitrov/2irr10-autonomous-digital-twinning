@@ -4,12 +4,13 @@ import math
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, TwistStamped
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
 FORWARD_LINEAR_X = 0.15
 MOVE_DURATION_SEC = 5.0
+CMD_VEL_PUBLISH_HZ = 10.0
 
 
 class NitrobotMediatorNode(Node):
@@ -18,10 +19,15 @@ class NitrobotMediatorNode(Node):
 
         self.last_zone = None
         self.stop_timer = None
+        self.move_timer = None
+        self._move_linear_x = 0.0
+        self._move_angular_z = 0.0
 
         self.declare_parameter("battery_state_topic", "/battery_state")
 
-        self.sim_pub = self.create_publisher(Twist, "/sim/cmd_vel", 10)
+        # Gazebo ros_gz bridge expects TwistStamped on cmd_vel
+        self.sim_pub = self.create_publisher(TwistStamped, "/sim/cmd_vel", 10)
+        # Physical TurtleBot3 expects Twist on cmd_vel
         self.real_pub = self.create_publisher(Twist, "/real/cmd_vel", 10)
         self.battery_pub = self.create_publisher(String, "/nitrobot/battery_state", 10)
 
@@ -42,7 +48,8 @@ class NitrobotMediatorNode(Node):
 
         self.get_logger().info(
             "Listening on /nitrobot/target_zone and "
-            f"{battery_topic}; fan-out to /sim/cmd_vel and /real/cmd_vel"
+            f"{battery_topic}; fan-out to /sim/cmd_vel (TwistStamped) "
+            "and /real/cmd_vel (Twist)"
         )
 
     def _target_zone_callback(self, msg: String):
@@ -59,7 +66,7 @@ class NitrobotMediatorNode(Node):
             self.stop_timer.cancel()
             self.stop_timer = None
 
-        self._publish_twist(FORWARD_LINEAR_X, 0.0)
+        self._start_move(FORWARD_LINEAR_X, 0.0)
         self.stop_timer = self.create_timer(MOVE_DURATION_SEC, self._stop_after_move)
 
     def _stop_after_move(self):
@@ -67,16 +74,40 @@ class NitrobotMediatorNode(Node):
             self.stop_timer.cancel()
             self.stop_timer = None
 
-        self._publish_twist(0.0, 0.0)
+        self._stop_move()
         self.get_logger().info("Stopping sim and real robots")
 
-    def _publish_twist(self, linear_x: float, angular_z: float):
-        twist = Twist()
-        twist.linear.x = linear_x
-        twist.angular.z = angular_z
+    def _start_move(self, linear_x: float, angular_z: float):
+        self._stop_move_timer()
+        self._move_linear_x = linear_x
+        self._move_angular_z = angular_z
+        self._publish_twist(linear_x, angular_z)
+        period = 1.0 / CMD_VEL_PUBLISH_HZ
+        self.move_timer = self.create_timer(period, self._publish_move_tick)
 
-        self.sim_pub.publish(twist)
-        self.real_pub.publish(twist)
+    def _publish_move_tick(self):
+        self._publish_twist(self._move_linear_x, self._move_angular_z)
+
+    def _stop_move_timer(self):
+        if self.move_timer is not None:
+            self.move_timer.cancel()
+            self.move_timer = None
+
+    def _stop_move(self):
+        self._stop_move_timer()
+        self._publish_twist(0.0, 0.0)
+
+    def _publish_twist(self, linear_x: float, angular_z: float):
+        sim_msg = TwistStamped()
+        sim_msg.header.stamp = self.get_clock().now().to_msg()
+        sim_msg.twist.linear.x = linear_x
+        sim_msg.twist.angular.z = angular_z
+        self.sim_pub.publish(sim_msg)
+
+        real_msg = Twist()
+        real_msg.linear.x = linear_x
+        real_msg.angular.z = angular_z
+        self.real_pub.publish(real_msg)
 
         if linear_x != 0.0 or angular_z != 0.0:
             self.get_logger().info(
