@@ -55,3 +55,10 @@ CORRECT command for starting robot:
 ```
 ros2 launch turtlebot3_bringup robot.launch.py namespace:=real
 ```
+
+```
+pkill -f ros2
+pkill -f rviz2
+pkill -f gz
+ros2 node list
+```
