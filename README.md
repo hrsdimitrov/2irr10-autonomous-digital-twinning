@@ -40,20 +40,13 @@ ros2 run nitrobot_decision set_zone.sh zone_2
 
 `export TURTLEBOT3_MODEL=burger`
 
-```bash
-exec ros2 launch turtlebot3_bringup robot.launch.py --ros-args \
-  -r /cmd_vel:=/real/cmd_vel \
-  -r /odom:=/real/odom \
-  -r /scan:=/real/scan
-```
 
 ```
 ros2 topic pub /battery_state sensor_msgs/msg/BatteryState \ "{voltage: 11.4, percentage: 0.82}" -r 1
 ```
 
+
+CORRECT command for starting robot:
 ```
-ros2 launch turtlebot3_bringup robot.launch.py --ros-args \
-  -r /cmd_vel:=/real/cmd_vel \
-  -r /odom:=/real/odom \
-  -r /scan:=/real/scan
+ros2 launch turtlebot3_bringup robot.launch.py namespace:=real
 ```
