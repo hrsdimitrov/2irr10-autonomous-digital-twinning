@@ -25,13 +25,12 @@ def generate_launch_description():
     turtlebot3_gazebo_share = get_package_share_directory("turtlebot3_gazebo")
     ros_gz_sim_share = get_package_share_directory("ros_gz_sim")
     nitrobot_sim_share = get_package_share_directory("nitrobot_sim")
-    nitrobot_bringup_share = get_package_share_directory("nitrobot_bringup")
 
     launch_file_dir = os.path.join(turtlebot3_gazebo_share, "launch")
     world = os.path.join(nitrobot_sim_share, "worlds", "farm_world.world")
     map_file = os.path.join(nitrobot_sim_share, "maps", "map.yaml")
     namespaced_nav2_launch = os.path.join(
-        nitrobot_bringup_share, "launch", "namespaced_nav2.launch.py"
+        nitrobot_sim_share, "launch", "namespaced_nav2.launch.py"
     )
 
     declare_use_sim_time = DeclareLaunchArgument(
