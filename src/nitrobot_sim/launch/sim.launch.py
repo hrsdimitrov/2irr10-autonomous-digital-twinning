@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch Gazebo farm world and TurtleBot3 with all ROS topics under /sim."""
+"""Gazebo farm world, TurtleBot3 under /sim, and namespaced Nav2."""
 
 import os
 
@@ -22,11 +22,16 @@ def generate_launch_description():
     y_pose = LaunchConfiguration("y_pose")
 
     turtlebot3_gazebo_share = get_package_share_directory("turtlebot3_gazebo")
+    turtlebot3_navigation2_share = get_package_share_directory("turtlebot3_navigation2")
     ros_gz_sim_share = get_package_share_directory("ros_gz_sim")
     nitrobot_sim_share = get_package_share_directory("nitrobot_sim")
 
     launch_file_dir = os.path.join(turtlebot3_gazebo_share, "launch")
     world = os.path.join(nitrobot_sim_share, "worlds", "farm_world.world")
+    map_file = os.path.join(nitrobot_sim_share, "maps", "map.yaml")
+    nav2_launch = os.path.join(
+        turtlebot3_navigation2_share, "launch", "navigation2.launch.py"
+    )
 
     declare_use_sim_time = DeclareLaunchArgument(
         "use_sim_time",
@@ -69,7 +74,6 @@ def generate_launch_description():
         }.items(),
     )
 
-    # TurtleBot3 spawn + ros_gz bridges + robot_state_publisher under /sim
     sim_robot_group = GroupAction(
         actions=[
             PushRosNamespace("sim"),
@@ -91,6 +95,19 @@ def generate_launch_description():
         ]
     )
 
+    sim_nav_group = GroupAction(
+        actions=[
+            PushRosNamespace("sim"),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(nav2_launch),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "map": map_file,
+                }.items(),
+            ),
+        ]
+    )
+
     return LaunchDescription(
         [
             declare_use_sim_time,
@@ -100,5 +117,6 @@ def generate_launch_description():
             gzserver_cmd,
             gzclient_cmd,
             sim_robot_group,
+            sim_nav_group,
         ]
     )

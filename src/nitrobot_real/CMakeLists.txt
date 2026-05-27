@@ -15,6 +15,11 @@ if(BUILD_TESTING)
 endif()
 
 install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
   PROGRAMS
   scripts/real_teleop.sh
   DESTINATION lib/${PROJECT_NAME}
