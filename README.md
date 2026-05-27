@@ -16,49 +16,31 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 2. `colcon build --symlink-install`
 3. `source install/setup.bash`
 
-## Simulation
+## Physical robot lab
 
-`ros2 launch nitrobot_sim sim.launch.py`
-
-`ros2 run nitrobot_sim sim_teleop.sh`
-
-## Bringup
-
-`ros2 launch nitrobot_bringup bringup.launch.py`
-
-## Digital twin (decision + mediator)
+**On the TurtleBot (Raspberry Pi):**
 
 ```bash
-ros2 launch nitrobot_decision decision.launch.py
-ros2 launch nitrobot_mediator mediator.launch.py
-ros2 run nitrobot_decision set_zone.sh zone_2
+export TURTLEBOT3_MODEL=burger
+ros2 launch turtlebot3_bringup robot.launch.py
 ```
 
-`ros2 topic echo /nitrobot/battery_state`
-
-## Physical robot
-
-`ros2 launch nitrobot_real real.launch.py`
-
-`ros2 run nitrobot_real real_teleop.sh`
-
-# Inside the TurtleBot
-
-`export TURTLEBOT3_MODEL=burger`
+**On the laptop/container:**
 
 ```bash
-ros2 topic pub /real/battery_state sensor_msgs/msg/BatteryState "{voltage: 11.4, percentage: 0.82}" -r 1
+ros2 launch nitrobot_bringup physical_system.launch.py
 ```
 
-CORRECT command for starting robot:
+**Send a zone:**
 
-```
-ros2 launch turtlebot3_bringup robot.launch.py namespace:=real
+```bash
+ros2 run nitrobot_decision set_zone.sh zone_14
 ```
 
-```
-pkill -f ros2
-pkill -f rviz2
-pkill -f gz
-ros2 node list
+**Optional teleop:** `ros2 run nitrobot_real real_teleop.sh`
+
+**Test battery (no robot):**
+
+```bash
+ros2 topic pub --once /battery_state sensor_msgs/msg/BatteryState "{voltage: 11.4, percentage: 0.82}"
 ```
