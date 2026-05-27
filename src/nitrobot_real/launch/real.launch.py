@@ -15,11 +15,10 @@ def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
 
     nitrobot_sim_share = get_package_share_directory("nitrobot_sim")
-    nitrobot_bringup_share = get_package_share_directory("nitrobot_bringup")
 
     map_file = os.path.join(nitrobot_sim_share, "maps", "map.yaml")
     namespaced_nav2_launch = os.path.join(
-        nitrobot_bringup_share, "launch", "namespaced_nav2.launch.py"
+        nitrobot_sim_share, "launch", "namespaced_nav2.launch.py"
     )
 
     return LaunchDescription([
