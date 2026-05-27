@@ -13,8 +13,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
-SIM_NAV_ACTION = "/sim/navigate_to_pose"
-REAL_NAV_ACTION = "/real/navigate_to_pose"
+NAV_ACTION = "/navigate_to_pose"
 
 
 class NitrobotMediatorNode(Node):
@@ -24,10 +23,7 @@ class NitrobotMediatorNode(Node):
         self.last_zone = None
         self.zones = self._load_zones()
 
-        self.declare_parameter("battery_state_topic", "/real/battery_state")
-
-        self.sim_nav_client = ActionClient(self, NavigateToPose, SIM_NAV_ACTION)
-        self.real_nav_client = ActionClient(self, NavigateToPose, REAL_NAV_ACTION)
+        self.nav_client = ActionClient(self, NavigateToPose, NAV_ACTION)
         self.battery_pub = self.create_publisher(String, "/nitrobot/battery_state", 10)
 
         self.create_subscription(
@@ -36,18 +32,16 @@ class NitrobotMediatorNode(Node):
             self._target_zone_callback,
             10,
         )
-
-        battery_topic = self.get_parameter("battery_state_topic").value
         self.create_subscription(
             BatteryState,
-            battery_topic,
+            "/battery_state",
             self._battery_state_callback,
             10,
         )
 
         self.get_logger().info(
-            f"Loaded {len(self.zones)} zones; listening on /nitrobot/target_zone "
-            f"and {battery_topic}; Nav2 goals -> {SIM_NAV_ACTION}, {REAL_NAV_ACTION}"
+            f"Loaded {len(self.zones)} zones; /nitrobot/target_zone -> {NAV_ACTION}; "
+            "/battery_state -> /nitrobot/battery_state"
         )
 
     def _load_zones(self):
@@ -77,14 +71,11 @@ class NitrobotMediatorNode(Node):
         y = float(zone_data["y"])
         yaw = float(zone_data.get("yaw", 0.0))
 
-        self.get_logger().info(
-            f"Resolved {zone} -> x={x}, y={y}, yaw={yaw}"
-        )
+        self.get_logger().info(f"Resolved {zone} -> x={x}, y={y}, yaw={yaw}")
         self.last_zone = zone
 
         goal = self._make_nav_goal(x, y, yaw)
-        self._send_nav_goal(self.sim_nav_client, "sim", goal)
-        self._send_nav_goal(self.real_nav_client, "real", goal)
+        self._send_nav_goal(goal)
 
     def _make_nav_goal(self, x: float, y: float, yaw: float) -> NavigateToPose.Goal:
         goal = NavigateToPose.Goal()
@@ -104,63 +95,48 @@ class NitrobotMediatorNode(Node):
         quaternion.w = math.cos(yaw / 2.0)
         return quaternion
 
-    def _send_nav_goal(
-        self,
-        client: ActionClient,
-        label: str,
-        goal: NavigateToPose.Goal,
-    ):
-        action_name = SIM_NAV_ACTION if label == "sim" else REAL_NAV_ACTION
-        self.get_logger().info(f"Waiting for {action_name} action server")
+    def _send_nav_goal(self, goal: NavigateToPose.Goal):
+        self.get_logger().info(f"Waiting for {NAV_ACTION} action server")
 
-        if not client.wait_for_server(timeout_sec=10.0):
+        if not self.nav_client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error(
-                f"{action_name} action server not available after timeout"
+                f"{NAV_ACTION} action server not available after timeout"
             )
             return
 
-        self.get_logger().info(f"Sent goal to {label} Nav2")
-        send_future = client.send_goal_async(goal)
-        send_future.add_done_callback(
-            lambda future, nav_label=label: self._goal_response_callback(
-                future, nav_label
-            )
-        )
+        self.get_logger().info(f"Sent NavigateToPose goal to {NAV_ACTION}")
+        send_future = self.nav_client.send_goal_async(goal)
+        send_future.add_done_callback(self._goal_response_callback)
 
-    def _goal_response_callback(self, future, label: str):
+    def _goal_response_callback(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().warn(f"Goal rejected for {label}")
+            self.get_logger().warn("Goal rejected")
             return
 
-        self.get_logger().info(f"Goal accepted for {label}")
+        self.get_logger().info("Goal accepted")
         result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(
-            lambda result, nav_label=label: self._result_callback(result, nav_label)
-        )
+        result_future.add_done_callback(self._result_callback)
 
-    def _result_callback(self, future, label: str):
+    def _result_callback(self, future):
         result = future.result()
-        self.get_logger().info(
-            f"Goal finished for {label}: status={result.status}"
-        )
+        self.get_logger().info(f"Goal finished: status={result.status}")
 
     def _battery_state_callback(self, msg: BatteryState):
         battery_percent, status = self._normalize_battery(msg.percentage)
 
-        out = String()
         if battery_percent is None:
-            out.data = (
-                f"source: real, battery_percent: unknown, "
+            out = (
+                f"source: physical, battery_percent: unknown, "
                 f"voltage: {msg.voltage:.1f}, status: {status}"
             )
         else:
-            out.data = (
-                f"source: real, battery_percent: {battery_percent:.1f}, "
+            out = (
+                f"source: physical, battery_percent: {battery_percent:.1f}, "
                 f"voltage: {msg.voltage:.1f}, status: {status}"
             )
 
-        self.battery_pub.publish(out)
+        self.battery_pub.publish(String(data=out))
 
     def _normalize_battery(self, percentage: float):
         if percentage < 0.0 or math.isnan(percentage):
