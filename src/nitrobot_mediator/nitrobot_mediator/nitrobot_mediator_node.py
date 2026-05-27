@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 
 import math
+import os
 
 import rclpy
+import yaml
+from ament_index_python.packages import get_package_share_directory
+from geometry_msgs.msg import PoseStamped, Quaternion
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, TwistStamped
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
-FORWARD_LINEAR_X = 0.15
-MOVE_DURATION_SEC = 5.0
-CMD_VEL_PUBLISH_HZ = 10.0
+SIM_NAV_ACTION = "/sim/navigate_to_pose"
+REAL_NAV_ACTION = "/real/navigate_to_pose"
 
 
 class NitrobotMediatorNode(Node):
@@ -18,17 +22,12 @@ class NitrobotMediatorNode(Node):
         super().__init__("nitrobot_mediator_node")
 
         self.last_zone = None
-        self.stop_timer = None
-        self.move_timer = None
-        self._move_linear_x = 0.0
-        self._move_angular_z = 0.0
+        self.zones = self._load_zones()
 
-        self.declare_parameter("battery_state_topic", "/battery_state")
+        self.declare_parameter("battery_state_topic", "/real/battery_state")
 
-        # Gazebo ros_gz bridge expects TwistStamped on cmd_vel
-        self.sim_pub = self.create_publisher(TwistStamped, "/sim/cmd_vel", 10)
-        # Physical TurtleBot3 expects Twist on cmd_vel
-        self.real_pub = self.create_publisher(Twist, "/real/cmd_vel", 10)
+        self.sim_nav_client = ActionClient(self, NavigateToPose, SIM_NAV_ACTION)
+        self.real_nav_client = ActionClient(self, NavigateToPose, REAL_NAV_ACTION)
         self.battery_pub = self.create_publisher(String, "/nitrobot/battery_state", 10)
 
         self.create_subscription(
@@ -47,72 +46,104 @@ class NitrobotMediatorNode(Node):
         )
 
         self.get_logger().info(
-            "Listening on /nitrobot/target_zone and "
-            f"{battery_topic}; fan-out to /sim/cmd_vel (TwistStamped) "
-            "and /real/cmd_vel (Twist)"
+            f"Loaded {len(self.zones)} zones; listening on /nitrobot/target_zone "
+            f"and {battery_topic}; Nav2 goals -> {SIM_NAV_ACTION}, {REAL_NAV_ACTION}"
         )
 
+    def _load_zones(self):
+        zones_path = os.path.join(
+            get_package_share_directory("nitrobot_mediator"),
+            "config",
+            "zones.yaml",
+        )
+        with open(zones_path, "r", encoding="utf-8") as zones_file:
+            data = yaml.safe_load(zones_file)
+        return data.get("zones", {})
+
     def _target_zone_callback(self, msg: String):
-        zone = msg.data
+        zone = msg.data.strip()
+        self.get_logger().info(f"Received target zone: {zone}")
+
         if zone == self.last_zone:
+            self.get_logger().info(f"Ignored duplicate target zone: {zone}")
             return
 
+        if zone not in self.zones:
+            self.get_logger().error(f"Unknown zone: {zone}")
+            return
+
+        zone_data = self.zones[zone]
+        x = float(zone_data["x"])
+        y = float(zone_data["y"])
+        yaw = float(zone_data.get("yaw", 0.0))
+
         self.get_logger().info(
-            f"Target zone changed: {self.last_zone} -> {zone}"
+            f"Resolved {zone} -> x={x}, y={y}, yaw={yaw}"
         )
         self.last_zone = zone
 
-        if self.stop_timer is not None:
-            self.stop_timer.cancel()
-            self.stop_timer = None
+        goal = self._make_nav_goal(x, y, yaw)
+        self._send_nav_goal(self.sim_nav_client, "sim", goal)
+        self._send_nav_goal(self.real_nav_client, "real", goal)
 
-        self._start_move(FORWARD_LINEAR_X, 0.0)
-        self.stop_timer = self.create_timer(MOVE_DURATION_SEC, self._stop_after_move)
+    def _make_nav_goal(self, x: float, y: float, yaw: float) -> NavigateToPose.Goal:
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = "map"
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = x
+        goal.pose.pose.position.y = y
+        goal.pose.pose.position.z = 0.0
+        goal.pose.pose.orientation = self._yaw_to_quaternion(yaw)
+        return goal
 
-    def _stop_after_move(self):
-        if self.stop_timer is not None:
-            self.stop_timer.cancel()
-            self.stop_timer = None
+    @staticmethod
+    def _yaw_to_quaternion(yaw: float) -> Quaternion:
+        quaternion = Quaternion()
+        quaternion.z = math.sin(yaw / 2.0)
+        quaternion.w = math.cos(yaw / 2.0)
+        return quaternion
 
-        self._stop_move()
-        self.get_logger().info("Stopping sim and real robots")
+    def _send_nav_goal(
+        self,
+        client: ActionClient,
+        label: str,
+        goal: NavigateToPose.Goal,
+    ):
+        action_name = SIM_NAV_ACTION if label == "sim" else REAL_NAV_ACTION
+        self.get_logger().info(f"Waiting for {action_name} action server")
 
-    def _start_move(self, linear_x: float, angular_z: float):
-        self._stop_move_timer()
-        self._move_linear_x = linear_x
-        self._move_angular_z = angular_z
-        self._publish_twist(linear_x, angular_z)
-        if linear_x != 0.0 or angular_z != 0.0:
-            self.get_logger().info(
-                f"Move command: linear.x={linear_x}, angular.z={angular_z} "
-                f"({CMD_VEL_PUBLISH_HZ:.0f} Hz for {MOVE_DURATION_SEC:.0f}s)"
+        if not client.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error(
+                f"{action_name} action server not available after timeout"
             )
-        period = 1.0 / CMD_VEL_PUBLISH_HZ
-        self.move_timer = self.create_timer(period, self._publish_move_tick)
+            return
 
-    def _publish_move_tick(self):
-        self._publish_twist(self._move_linear_x, self._move_angular_z)
+        self.get_logger().info(f"Sent goal to {label} Nav2")
+        send_future = client.send_goal_async(goal)
+        send_future.add_done_callback(
+            lambda future, nav_label=label: self._goal_response_callback(
+                future, nav_label
+            )
+        )
 
-    def _stop_move_timer(self):
-        if self.move_timer is not None:
-            self.move_timer.cancel()
-            self.move_timer = None
+    def _goal_response_callback(self, future, label: str):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn(f"Goal rejected for {label}")
+            return
 
-    def _stop_move(self):
-        self._stop_move_timer()
-        self._publish_twist(0.0, 0.0)
+        self.get_logger().info(f"Goal accepted for {label}")
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(
+            lambda result, nav_label=label: self._result_callback(result, nav_label)
+        )
 
-    def _publish_twist(self, linear_x: float, angular_z: float):
-        sim_msg = TwistStamped()
-        sim_msg.header.stamp = self.get_clock().now().to_msg()
-        sim_msg.twist.linear.x = linear_x
-        sim_msg.twist.angular.z = angular_z
-        self.sim_pub.publish(sim_msg)
-
-        real_msg = Twist()
-        real_msg.linear.x = linear_x
-        real_msg.angular.z = angular_z
-        self.real_pub.publish(real_msg)
+    def _result_callback(self, future, label: str):
+        result = future.result()
+        self.get_logger().info(
+            f"Goal finished for {label}: status={result.status}"
+        )
 
     def _battery_state_callback(self, msg: BatteryState):
         battery_percent, status = self._normalize_battery(msg.percentage)
