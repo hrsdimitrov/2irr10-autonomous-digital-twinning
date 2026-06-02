@@ -6,11 +6,14 @@ import os
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import TwistStamped
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseStamped, Quaternion
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
 from rclpy.node import Node
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
+
+NAV_ACTION = "/navigate_to_pose"
 
 
 class NitrobotMediatorNode(Node):
@@ -20,12 +23,7 @@ class NitrobotMediatorNode(Node):
         self.last_zone = None
         self.zones = self._load_zones()
 
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.current_yaw = 0.0
-        self.target = None
-
-        self.cmd_vel_pub = self.create_publisher(TwistStamped, "/cmd_vel", 10)
+        self.nav_client = ActionClient(self, NavigateToPose, NAV_ACTION)
         self.battery_pub = self.create_publisher(String, "/nitrobot/battery_state", 10)
 
         self.create_subscription(
@@ -40,17 +38,10 @@ class NitrobotMediatorNode(Node):
             self._battery_state_callback,
             10,
         )
-        self.create_subscription(
-            Odometry,
-            "/odom",
-            self._odom_callback,
-            10,
-        )
-
-        self.create_timer(0.1, self._control_loop)
 
         self.get_logger().info(
-            f"Loaded {len(self.zones)} zones; /nitrobot/target_zone -> /cmd_vel"
+            f"Loaded {len(self.zones)} zones; /nitrobot/target_zone -> {NAV_ACTION}; "
+            "/battery_state -> /nitrobot/battery_state"
         )
 
     def _load_zones(self):
@@ -62,15 +53,6 @@ class NitrobotMediatorNode(Node):
         with open(zones_path, "r", encoding="utf-8") as zones_file:
             data = yaml.safe_load(zones_file)
         return data.get("zones", {})
-
-    def _odom_callback(self, msg: Odometry):
-        self.current_x = msg.pose.pose.position.x
-        self.current_y = msg.pose.pose.position.y
-        q = msg.pose.pose.orientation
-        self.current_yaw = math.atan2(
-            2.0 * (q.w * q.z + q.x * q.y),
-            1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        )
 
     def _target_zone_callback(self, msg: String):
         zone = msg.data.strip()
@@ -87,41 +69,58 @@ class NitrobotMediatorNode(Node):
         zone_data = self.zones[zone]
         x = float(zone_data["x"])
         y = float(zone_data["y"])
+        yaw = float(zone_data.get("yaw", 0.0))
 
-        self.get_logger().info(f"Resolved {zone} -> x={x}, y={y}")
+        self.get_logger().info(f"Resolved {zone} -> x={x}, y={y}, yaw={yaw}")
         self.last_zone = zone
-        self.target = (x, y)
 
-    def _control_loop(self):
-        if self.target is None:
+        goal = self._make_nav_goal(x, y, yaw)
+        self._send_nav_goal(goal)
+
+    def _make_nav_goal(self, x: float, y: float, yaw: float) -> NavigateToPose.Goal:
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = "map"
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = x
+        goal.pose.pose.position.y = y
+        goal.pose.pose.position.z = 0.0
+        goal.pose.pose.orientation = self._yaw_to_quaternion(yaw)
+        return goal
+
+    @staticmethod
+    def _yaw_to_quaternion(yaw: float) -> Quaternion:
+        quaternion = Quaternion()
+        quaternion.z = math.sin(yaw / 2.0)
+        quaternion.w = math.cos(yaw / 2.0)
+        return quaternion
+
+    def _send_nav_goal(self, goal: NavigateToPose.Goal):
+        self.get_logger().info(f"Waiting for {NAV_ACTION} action server")
+
+        if not self.nav_client.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error(
+                f"{NAV_ACTION} action server not available after timeout"
+            )
             return
 
-        tx, ty = self.target
-        dx = tx - self.current_x
-        dy = ty - self.current_y
-        dist = math.sqrt(dx * dx + dy * dy)
+        self.get_logger().info(f"Sent NavigateToPose goal to {NAV_ACTION}")
+        send_future = self.nav_client.send_goal_async(goal)
+        send_future.add_done_callback(self._goal_response_callback)
 
-        twist = TwistStamped()
-        twist.header.stamp = self.get_clock().now().to_msg()
+    def _goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn("Goal rejected")
+            return
 
-        if dist > 0.15:
-            angle_to_target = math.atan2(dy, dx)
-            angle_error = angle_to_target - self.current_yaw
-            while angle_error > math.pi:
-                angle_error -= 2.0 * math.pi
-            while angle_error < -math.pi:
-                angle_error += 2.0 * math.pi
+        self.get_logger().info("Goal accepted")
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._result_callback)
 
-            if abs(angle_error) > 0.3:
-                twist.twist.angular.z = 1.0 * angle_error
-            else:
-                twist.twist.linear.x = min(0.2, dist)
-                twist.twist.angular.z = 0.5 * angle_error
-        else:
-            self.get_logger().info(f"Reached target {self.target}!")
-            self.target = None
-
-        self.cmd_vel_pub.publish(twist)
+    def _result_callback(self, future):
+        result = future.result()
+        self.get_logger().info(f"Goal finished: status={result.status}")
 
     def _battery_state_callback(self, msg: BatteryState):
         battery_percent, status = self._normalize_battery(msg.percentage)

@@ -4,16 +4,15 @@ services:
     image: turtlebot3_ws
     container_name: turtlebot3_container
 
-    network_mode: host
+    ports:
+      - "5901:5901"
 
     environment:
-      - DISPLAY=${DISPLAY}
       - TURTLEBOT3_MODEL=burger
       - LIBGL_ALWAYS_SOFTWARE=1
 
     volumes:
       - .:/ws
-      - /tmp/.X11-unix:/tmp/.X11-unix
 
     working_dir: /ws
 
