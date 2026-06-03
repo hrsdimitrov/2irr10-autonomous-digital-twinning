@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Physical TurtleBot lab: Nav2 + decision + mediator (no simulation)."""
+"""Physical TurtleBot lab: real Nav2 + decision + mediator (no simulation)."""
 
 import os
 
@@ -20,8 +20,16 @@ def generate_launch_description():
         get_package_share_directory("nitrobot_mediator"), "launch", "mediator.launch.py"
     )
 
+    mediator = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(mediator_launch),
+        launch_arguments={
+            "use_sim_navigation": "false",
+            "use_real_navigation": "true",
+        }.items(),
+    )
+
     return LaunchDescription([
         IncludeLaunchDescription(PythonLaunchDescriptionSource(real_launch)),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(decision_launch)),
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(mediator_launch)),
+        mediator,
     ])
