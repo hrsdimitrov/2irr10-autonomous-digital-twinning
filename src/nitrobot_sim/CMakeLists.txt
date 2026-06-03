@@ -7,15 +7,6 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/env-hooks/extend_turtlebot3_ws.sh.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/env-hooks/extend_turtlebot3_ws.sh"
-  @ONLY
-)
-ament_environment_hooks(
-  "${CMAKE_CURRENT_BINARY_DIR}/env-hooks/extend_turtlebot3_ws.sh"
-)
-
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)

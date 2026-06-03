@@ -15,8 +15,8 @@ from nitrobot_mediator.zone_registry import ZoneRegistry
 FORWARD_LINEAR_X = 0.15
 MOVE_DURATION_SEC = 5.0
 CMD_VEL_PUBLISH_HZ = 10.0
-NAV_SERVER_WAIT_SEC = 1.0
-NAV_RETRY_PERIOD_SEC = 5.0
+NAV_SERVER_WAIT_SEC = 10.0
+NAV_RETRY_PERIOD_SEC = 3.0
 
 
 class NavigationGoalClient:
@@ -100,10 +100,10 @@ class NavigationGoalClient:
 
     def _feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback
-        self._node.get_logger().debug(
+        self._node.get_logger().info(
             f"{self._label} distance remaining: "
             f"{feedback.distance_remaining:.2f} m",
-            throttle_duration_sec=5.0,
+            throttle_duration_sec=2.0,
         )
 
     def _ensure_retry_timer(self):
@@ -117,7 +117,7 @@ class NavigationGoalClient:
         if self._pending_goal is None:
             return
         pose, zone_name = self._pending_goal
-        if not self._client.wait_for_server(timeout_sec=0.0):
+        if not self._client.wait_for_server(timeout_sec=1.0):
             return
         self._node.get_logger().info(
             f"{self._label} Nav2 ready; sending pending goal to {zone_name}"
