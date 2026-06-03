@@ -59,9 +59,15 @@ ros2 run nitrobot_decision set_zone.sh zone_5
 ## Gazebo vs RViz
 
 - **Gazebo** shows the robot in the **world** (ground truth).
-- **RViz** shows the robot via **TF** (`map` → `odom` → `base_footprint`).
+- **RViz** shows the robot via **TF** (`map` → `odom` → `base_footprint`) and the **occupancy map** on `/sim/map`.
+- The **map frame matches the Gazebo world** (same coordinates as `zone_poses.yaml`). `map.pgm` is generated from `farm_world.world`; regenerate after world edits:
 
-They should match after **spawn** runs: `spawn.launch.py` publishes a fixed `map` → `odom` transform at the same `x_pose` / `y_pose` as Gazebo. If they still look wrong, restart spawn + nav2 (same spawn args) or use **2D Pose Estimate** once in RViz.
+```bash
+ros2 run nitrobot_sim generate_map_from_world.py
+colcon build --packages-select nitrobot_sim --symlink-install && source install/setup.bash
+```
+
+After **spawn**, `map` → `odom` is fixed to the spawn pose. LiDAR in RViz should line up with map walls. If not, restart sim → spawn → nav2 (same `x_pose` / `y_pose`) or use **2D Pose Estimate** once.
 
 Kill stale processes:
 

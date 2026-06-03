@@ -81,6 +81,7 @@ def generate_launch_description():
             "-p",
             f"config_file:={bridge_params}",
         ],
+        parameters=[{"use_sim_time": use_sim_time}],
         remappings=TF_REMAPS,
         output="screen",
     )
@@ -99,7 +100,8 @@ def generate_launch_description():
         remappings=TF_REMAPS,
     )
 
-    # Lock map frame to Gazebo spawn: odom origin at spawn => map->odom = (x, y).
+    # Gazebo diff-drive sets odom at the spawn pose; map frame = world frame.
+    # map->odom translation must match spawn (identity when x_pose/y_pose are 0).
     map_odom_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
