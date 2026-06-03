@@ -54,7 +54,7 @@ def generate_launch_description():
             "-r",
             "/tf:=/real/tf",
             "-r",
-            "/tf_static:=/real/tf_static",
+            "/tf_static:=/real/tf_static"
         ],
         parameters=[{"use_sim_time": use_sim_time}],
     )

@@ -19,9 +19,21 @@
 
 ## On the Raspberry Pi
 
+Start bringup **before** Nav2 on the workstation. Use the `real` namespace and the frame overlay so wheel odometry TF matches the namespaced URDF (`real/odom`, `real/base_footprint`, …):
+
 ```bash
 export TURTLEBOT3_MODEL=burger
-ros2 launch turtlebot3_bringup robot.launch.py namespace:=real
+ros2 launch turtlebot3_bringup robot.launch.py namespace:=real \
+  --params-file $(ros2 pkg prefix nitrobot_real)/share/nitrobot_real/config/turtlebot3_real_frames.yaml
+```
+
+If `nitrobot_real` is not installed on the Pi, copy `src/nitrobot_real/config/turtlebot3_real_frames.yaml` and pass its path to `--params-file`.
+
+Pi and workstation must share the same `ROS_DOMAIN_ID` and be on the same network. Check TF on the laptop:
+
+```bash
+ros2 topic hz /real/tf
+ros2 run tf2_ros tf2_echo real/odom real/base_footprint --ros-args -r /tf:=/real/tf
 ```
 
 ## On the laptop / workstation

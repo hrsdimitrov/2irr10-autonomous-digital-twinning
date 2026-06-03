@@ -1,0 +1,11 @@
+# Overlay for Pi bringup with namespace:=real.
+# Ensures wheel odometry TF uses the same real/* frame IDs as the namespaced URDF.
+/**:
+  diff_drive_controller:
+    ros__parameters:
+      namespace: "real"
+      odometry:
+        publish_tf: true
+        use_imu: true
+        frame_id: "odom"
+        child_frame_id: "base_footprint"
