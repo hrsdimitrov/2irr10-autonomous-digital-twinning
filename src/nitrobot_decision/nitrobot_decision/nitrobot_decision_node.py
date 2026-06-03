@@ -10,7 +10,7 @@ class NitrobotDecisionNode(Node):
     def __init__(self):
         super().__init__("nitrobot_decision_node")
 
-        self.declare_parameter("target_zone", "zone_1")
+        self.declare_parameter("target_zone", "zone_2")
         self.declare_parameter("battery_log_interval_sec", 30.0)
 
         self._last_published = None
@@ -18,8 +18,7 @@ class NitrobotDecisionNode(Node):
         self.publisher = self.create_publisher(String, "/nitrobot/target_zone", 10)
         self.add_on_set_parameters_callback(self._on_parameters_changed)
 
-        self._publish_zone(self.get_parameter("target_zone").value)
-        self.create_timer(2.0, self._republish_zone)
+        self._publish_zone(self._current_target_zone())
 
         self.create_subscription(
             String,
@@ -37,22 +36,25 @@ class NitrobotDecisionNode(Node):
             f"battery logged every {battery_log_interval}s"
         )
 
+    def _current_target_zone(self) -> str:
+        return self.get_parameter("target_zone").get_parameter_value().string_value.strip()
+
     def _on_parameters_changed(self, params):
         for param in params:
             if param.name == "target_zone" and param.type_ == Parameter.Type.STRING:
-                self._publish_zone(param.value)
+                self._publish_zone(param.value.strip())
         return rclpy.node.SetParametersResult(successful=True)
 
-    def _republish_zone(self):
-        self._publish_zone(self.get_parameter("target_zone").value)
-
     def _publish_zone(self, zone: str):
+        zone = zone.strip()
+        if not zone or zone == self._last_published:
+            return
+
         msg = String()
         msg.data = zone
         self.publisher.publish(msg)
-        if zone != self._last_published:
-            self._last_published = zone
-            self.get_logger().info(f"Published target zone: {zone}")
+        self._last_published = zone
+        self.get_logger().info(f"Published target zone: {zone}")
 
     def _battery_state_callback(self, msg: String):
         self._latest_battery_state = msg.data
@@ -73,7 +75,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

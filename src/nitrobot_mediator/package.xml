@@ -10,8 +10,9 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>nav2_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <exec_depend>nitrobot_sim</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 
   <test_depend>ament_copyright</test_depend>

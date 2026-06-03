@@ -1,46 +1,83 @@
-This repository contains all relevant code and documentation for the 2IRR10 Autonomous Digital Twinning project.
+# 2IRR10 Autonomous Digital Twinning
 
-# Docker Container
+Simulation uses the **`/sim`** namespace. The **map frame matches the Gazebo world** (same origin as `zone_poses.yaml`).
 
-1. Create Docker image: `docker compose build`
-2. Run `xhost +local:docker` before starting the container
-3. Start container: `docker compose up -d`
-4. Open new bash: `docker exec -it turtlebot3_container bash`
-5. Stop the container: To stop the container run `docker compose down`.
+## Setup
 
-# Inside the container
+```bash
+docker compose build && xhost +local:docker && docker compose up -d
+docker exec -it turtlebot3_container bash
+cd /ws && colcon build --symlink-install && source install/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+export TURTLEBOT3_MODEL=burger
+```
 
-## Building the project
+## Simulation (manual — run in order, separate terminals)
 
-1. `cd /ws`
-2. `colcon build --symlink-install`
-3. `source install/setup.bash`
+**1. Gazebo**
 
-## Physical robot lab
+```bash
+ros2 launch nitrobot_sim sim.launch.py
+```
 
-**On the TurtleBot (Raspberry Pi):**
+Wait for the world to load. If the GUI is paused, press Play.
+
+**2. Robot** (publishes `/sim/tf` and locks `map` → `odom` to the spawn pose)
+
+```bash
+ros2 launch nitrobot_sim spawn.launch.py
+```
+
+Optional spawn offset: `ros2 launch nitrobot_sim spawn.launch.py x_pose:=0.0 y_pose:=0.0`
+
+**3. Nav2 + RViz** (starts RViz ~15s after Nav2; map on `/sim/map`)
+
+```bash
+ros2 launch nitrobot_sim nav2.launch.py
+```
+
+RViz only: `ros2 launch nitrobot_sim rviz.launch.py`
+
+**4. Decision**
+
+```bash
+ros2 launch nitrobot_decision decision.launch.py
+```
+
+**5. Mediator**
+
+```bash
+ros2 launch nitrobot_mediator mediator.launch.py
+```
+
+**Zone goal**
+
+```bash
+ros2 run nitrobot_decision set_zone.sh zone_5
+```
+
+## Gazebo vs RViz
+
+- **Gazebo** shows the robot in the **world** (ground truth).
+- **RViz** shows the robot via **TF** (`map` → `odom` → `base_footprint`) and the **occupancy map** on `/sim/map`.
+- The **map frame matches the Gazebo world** (same coordinates as `zone_poses.yaml`). `map.pgm` is generated from `farm_world.world`; regenerate after world edits:
+
+```bash
+ros2 run nitrobot_sim generate_map_from_world.py
+colcon build --packages-select nitrobot_sim --symlink-install && source install/setup.bash
+```
+
+After **spawn**, `map` → `odom` is fixed to the spawn pose. LiDAR in RViz should line up with map walls. If not, restart sim → spawn → nav2 (same `x_pose` / `y_pose`) or use **2D Pose Estimate** once.
+
+Kill stale processes:
+
+```bash
+pkill -9 -f 'gz sim|rviz2|ros2 launch|nav2_|nitrobot_' 2>/dev/null; ros2 daemon stop 2>/dev/null; true
+```
+
+## Physical robot
 
 ```bash
 export TURTLEBOT3_MODEL=burger
-ros2 launch turtlebot3_bringup robot.launch.py
-```
-
-**On the laptop/container:**
-
-```bash
-ros2 launch nitrobot_bringup physical_system.launch.py
-```
-
-**Send a zone:**
-
-```bash
-ros2 run nitrobot_decision set_zone.sh zone_14
-```
-
-**Optional teleop:** `ros2 run nitrobot_real real_teleop.sh`
-
-**Test battery (no robot):**
-
-```bash
-ros2 topic pub --once /battery_state sensor_msgs/msg/BatteryState "{voltage: 11.4, percentage: 0.82}"
+ros2 launch turtlebot3_bringup robot.launch.py namespace:=real
 ```

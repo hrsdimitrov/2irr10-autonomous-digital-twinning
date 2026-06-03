@@ -1,0 +1,179 @@
+# Nitrogen patch centers from farm_world.world (map frame)
+frame_id: map
+zones:
+  zone_1:
+    x: -0.7
+    y: 0.4
+    yaw: 0.0
+  zone_2:
+    x: -0.15
+    y: 0.4
+    yaw: 0.0
+  zone_3:
+    x: 0.4
+    y: 0.4
+    yaw: 0.0
+  zone_4:
+    x: -0.7
+    y: -0.15
+    yaw: 0.0
+  zone_5:
+    x: -0.15
+    y: -0.15
+    yaw: 0.0
+  zone_6:
+    x: 0.4
+    y: -0.15
+    yaw: 0.0
+  zone_7:
+    x: -0.7
+    y: -0.7
+    yaw: 0.0
+  zone_8:
+    x: -0.15
+    y: -0.7
+    yaw: 0.0
+  zone_9:
+    x: 0.4
+    y: -0.7
+    yaw: 0.0
+  zone_10:
+    x: 1.1
+    y: 0.65
+    yaw: 0.0
+  zone_11:
+    x: 1.65
+    y: 0.65
+    yaw: 0.0
+  zone_12:
+    x: 2.2
+    y: 0.65
+    yaw: 0.0
+  zone_13:
+    x: 1.1
+    y: 0.05
+    yaw: 0.0
+  zone_14:
+    x: 1.65
+    y: 0.05
+    yaw: 0.0
+  zone_15:
+    x: 2.2
+    y: 0.05
+    yaw: 0.0
+  zone_16:
+    x: 1.1
+    y: -0.5
+    yaw: 0.0
+  zone_17:
+    x: 1.65
+    y: -0.5
+    yaw: 0.0
+  zone_18:
+    x: 2.2
+    y: -0.5
+    yaw: 0.0
+  zone_19:
+    x: -0.6
+    y: -1.4
+    yaw: 0.0
+  zone_20:
+    x: 0.0
+    y: -1.4
+    yaw: 0.0
+  zone_21:
+    x: 0.6
+    y: -1.4
+    yaw: 0.0
+  zone_22:
+    x: -0.6
+    y: -2.35
+    yaw: 0.0
+  zone_23:
+    x: 0.0
+    y: -2.35
+    yaw: 0.0
+  zone_24:
+    x: 0.6
+    y: -2.35
+    yaw: 0.0
+  zone_25:
+    x: -0.6
+    y: -2.9
+    yaw: 0.0
+  zone_26:
+    x: 0.0
+    y: -2.9
+    yaw: 0.0
+  zone_27:
+    x: 0.6
+    y: -2.9
+    yaw: 0.0
+  zone_28:
+    x: -0.6
+    y: -3.45
+    yaw: 0.0
+  zone_29:
+    x: 0.0
+    y: -3.45
+    yaw: 0.0
+  zone_30:
+    x: 0.6
+    y: -3.45
+    yaw: 0.0
+  zone_31:
+    x: 1.25
+    y: -1.15
+    yaw: 0.0
+  zone_32:
+    x: 1.8
+    y: -1.15
+    yaw: 0.0
+  zone_33:
+    x: 2.35
+    y: -1.15
+    yaw: 0.0
+  zone_34:
+    x: 1.25
+    y: -1.7
+    yaw: 0.0
+  zone_35:
+    x: 1.8
+    y: -1.7
+    yaw: 0.0
+  zone_36:
+    x: 2.35
+    y: -1.7
+    yaw: 0.0
+  zone_37:
+    x: 1.25
+    y: -2.25
+    yaw: 0.0
+  zone_38:
+    x: 1.8
+    y: -2.25
+    yaw: 0.0
+  zone_39:
+    x: 2.35
+    y: -2.25
+    yaw: 0.0
+  zone_40:
+    x: 1.25
+    y: -2.8
+    yaw: 0.0
+  zone_41:
+    x: 1.8
+    y: -2.8
+    yaw: 0.0
+  zone_42:
+    x: 2.35
+    y: -2.8
+    yaw: 0.0
+  zone_43:
+    x: 1.25
+    y: -3.35
+    yaw: 0.0
+  zone_44:
+    x: 1.8
+    y: -3.35
+    yaw: 0.0
