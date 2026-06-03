@@ -53,14 +53,16 @@ class NitrobotMediatorNode(Node):
         )
 
     def _target_zone_callback(self, msg: String):
-        zone = msg.data
-        if zone == self.last_zone:
+        zone = msg.data.strip()
+        if not zone or zone == self.last_zone:
             return
 
-        self.get_logger().info(
-            f"Target zone changed: {self.last_zone} -> {zone}"
-        )
+        previous_zone = self.last_zone
         self.last_zone = zone
+        if previous_zone is not None:
+            self.get_logger().info(
+                f"Target zone changed: {previous_zone} -> {zone}"
+            )
 
         if self.stop_timer is not None:
             self.stop_timer.cancel()

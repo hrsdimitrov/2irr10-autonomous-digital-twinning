@@ -24,21 +24,28 @@ Starts Gazebo, the decision node, and the mediator together (default target zone
 ros2 launch nitrobot_bringup bringup.launch.py
 ```
 
-Or:
-
-```bash
-ros2 run nitrobot_bringup bringup.sh
-```
-
 Optional launch arguments: `target_zone:=zone_1`, `with_nav2:=true`, `x_pose:=0.0`, `y_pose:=0.0`.
 
 ## Simulation (individual)
 
 `ros2 launch nitrobot_sim sim.launch.py`
 
+Each launch loads the world fresh (Gazebo session restore is disabled). The robot is spawned at `x_pose` / `y_pose` (default `0`, `0`). Stop any previous launch with Ctrl+C before starting again.
+
+If the sim still looks wrong after a crash, stop Gazebo manually, clear saved state, and relaunch:
+
+```bash
+pkill -9 -f "gz sim -s" || true
+pkill -9 -f "gz sim -g" || true
+rm -rf ~/.gz/sim/log/*
+ros2 launch nitrobot_sim sim.launch.py
+```
+
 `ros2 run nitrobot_sim sim_teleop.sh`
 
 ## Digital twin (individual)
+
+Do not run these if `nitrobot_bringup` is already running (you would get two decision nodes).
 
 ```bash
 ros2 launch nitrobot_decision decision.launch.py

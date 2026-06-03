@@ -8,8 +8,10 @@ from launch import LaunchDescription
 from launch.actions import (
     AppendEnvironmentVariable,
     DeclareLaunchArgument,
+    ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
+    TimerAction,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -44,6 +46,9 @@ def generate_launch_description():
         description="Initial robot y position",
     )
 
+    # Do not pass -r: it restores the previous Gazebo session from disk.
+    gz_server_args = f"-s -v2 {world}"
+
     set_turtlebot_model_path = AppendEnvironmentVariable(
         "GZ_SIM_RESOURCE_PATH",
         os.path.join(turtlebot3_gazebo_share, "models"),
@@ -54,7 +59,7 @@ def generate_launch_description():
             os.path.join(ros_gz_sim_share, "launch", "gz_sim.launch.py")
         ),
         launch_arguments={
-            "gz_args": f"-r -s -v2 {world}",
+            "gz_args": gz_server_args,
             "on_exit_shutdown": "true",
         }.items(),
     )
@@ -67,6 +72,31 @@ def generate_launch_description():
             "gz_args": "-g -v2",
             "on_exit_shutdown": "true",
         }.items(),
+    )
+
+    gzclient_cmd_delayed = TimerAction(period=2.0, actions=[gzclient_cmd])
+
+    unpause_sim = TimerAction(
+        period=5.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    "gz",
+                    "service",
+                    "-s",
+                    "/world/default/control",
+                    "--reqtype",
+                    "gz.msgs.WorldControl",
+                    "--reptype",
+                    "gz.msgs.Boolean",
+                    "--timeout",
+                    "5000",
+                    "--req",
+                    "pause: false",
+                ],
+                output="screen",
+            )
+        ],
     )
 
     # TurtleBot3 spawn + ros_gz bridges + robot_state_publisher under /sim
@@ -98,7 +128,8 @@ def generate_launch_description():
             declare_y_pose,
             set_turtlebot_model_path,
             gzserver_cmd,
-            gzclient_cmd,
+            gzclient_cmd_delayed,
+            unpause_sim,
             sim_robot_group,
         ]
     )

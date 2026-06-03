@@ -12,7 +12,7 @@ def generate_launch_description():
 
     declare_target_zone = DeclareLaunchArgument(
         "target_zone",
-        default_value="zone_1",
+        default_value="zone_2",
         description="Target zone published on /nitrobot/target_zone",
     )
 
