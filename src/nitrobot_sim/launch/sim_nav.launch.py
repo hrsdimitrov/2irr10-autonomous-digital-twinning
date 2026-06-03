@@ -5,15 +5,16 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetParameter
 
 # Robot spawns at 20s in sim.launch; allow create + bridges to finish
 NAV2_SEC = 45.0
-RVIZ_SEC = 50.0
+# RViz after Nav2 so /clock, /sim/map, and map->odom TF are ready (avoids TF_OLD_DATA)
+RVIZ_SEC = 48.0
 
 
 def generate_launch_description():
@@ -29,11 +30,27 @@ def generate_launch_description():
     map_file = os.path.join(nitrobot_sim_share, "maps", "map.yaml")
     nav2_params = os.path.join(nitrobot_sim_share, "config", "nav2_burger_sim.yaml")
 
-    declare_use_sim_time = DeclareLaunchArgument("use_sim_time", default_value="true")
-    declare_x_pose = DeclareLaunchArgument("x_pose", default_value="0.0")
-    declare_y_pose = DeclareLaunchArgument("y_pose", default_value="0.0")
-    declare_use_gui = DeclareLaunchArgument("use_gui", default_value="true")
-    declare_use_rviz = DeclareLaunchArgument("use_rviz", default_value="true")
+    declare_use_sim_time = DeclareLaunchArgument(
+        "use_sim_time",
+        default_value="true",
+        description="Use simulation clock for Nav2 and RViz",
+    )
+    declare_x_pose = DeclareLaunchArgument(
+        "x_pose", default_value="0.0", description="Robot spawn X (m)"
+    )
+    declare_y_pose = DeclareLaunchArgument(
+        "y_pose", default_value="0.0", description="Robot spawn Y (m)"
+    )
+    declare_use_gui = DeclareLaunchArgument(
+        "use_gui",
+        default_value="true",
+        description="Start Gazebo GUI (gz sim -g)",
+    )
+    declare_use_rviz = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="true",
+        description="Start RViz with sim_nav.rviz",
+    )
 
     nav2 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -51,13 +68,24 @@ def generate_launch_description():
         }.items(),
     )
 
-    rviz = Node(
-        package="rviz2",
-        executable="rviz2",
-        namespace="sim",
-        arguments=["-d", os.path.join(nitrobot_sim_share, "rviz", "sim_nav.rviz")],
-        parameters=[{"use_sim_time": use_sim_time}],
+    rviz_config = os.path.join(nitrobot_sim_share, "rviz", "sim_nav.rviz")
+    rviz = GroupAction(
         condition=IfCondition(use_rviz),
+        actions=[
+            SetParameter(name="use_sim_time", value=True),
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                arguments=[
+                    "-d",
+                    rviz_config,
+                    "--ros-args",
+                    "-p",
+                    "use_sim_time:=true",
+                ],
+            ),
+        ],
     )
 
     return LaunchDescription(

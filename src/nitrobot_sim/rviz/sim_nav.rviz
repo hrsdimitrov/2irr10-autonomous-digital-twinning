@@ -12,8 +12,9 @@ Visualization Manager:
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: true
-      Frame Timeout: 15
+      Frame Timeout: 30
       Marker Scale: 0.3
+      Show Names: false
     - Class: rviz_default_plugins/LaserScan
       Name: LaserScan
       Enabled: true

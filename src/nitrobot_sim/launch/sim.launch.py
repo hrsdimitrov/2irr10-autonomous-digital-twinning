@@ -11,6 +11,7 @@ from launch.actions import (
     ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
+    SetEnvironmentVariable,
     TimerAction,
 )
 from launch.conditions import IfCondition
@@ -73,6 +74,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            SetEnvironmentVariable(name="TURTLEBOT3_MODEL", value="burger"),
             declare_use_sim_time,
             declare_x_pose,
             declare_y_pose,

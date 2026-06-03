@@ -9,7 +9,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Time
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
-# Nav2 at 45s, RViz at 50s inside sim_nav
+# Nav2 at 45s, RViz at 48s inside sim_nav
 TWIN_NODES_SEC = 58.0
 
 

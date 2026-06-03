@@ -1,0 +1,10 @@
+# Prepend TurtleBot3 package prefixes (colcon isolated layout under /opt/turtlebot3_ws).
+_tb3_pkgs="turtlebot3_gazebo turtlebot3_description turtlebot3_msgs turtlebot3_navigation2 turtlebot3_teleop turtlebot3_cartographer"
+for _pkg in $_tb3_pkgs; do
+  _prefix="/opt/turtlebot3_ws/install/${_pkg}"
+  if [ -d "${_prefix}" ]; then
+    ament_prepend_unique_value AMENT_PREFIX_PATH "${_prefix}"
+    ament_prepend_unique_value CMAKE_PREFIX_PATH "${_prefix}"
+  fi
+done
+unset _tb3_pkgs _pkg _prefix
