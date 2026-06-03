@@ -16,13 +16,29 @@ This repository contains all relevant code and documentation for the 2IRR10 Auto
 2. `colcon build --symlink-install`
 3. `source install/setup.bash`
 
-## Simulation
+## Bringup (simulation + digital twin)
+
+Starts Gazebo, the decision node, and the mediator together (default target zone: `zone_2`):
+
+```bash
+ros2 launch nitrobot_bringup bringup.launch.py
+```
+
+Or:
+
+```bash
+ros2 run nitrobot_bringup bringup.sh
+```
+
+Optional launch arguments: `target_zone:=zone_1`, `with_nav2:=true`, `x_pose:=0.0`, `y_pose:=0.0`.
+
+## Simulation (individual)
 
 `ros2 launch nitrobot_sim sim.launch.py`
 
 `ros2 run nitrobot_sim sim_teleop.sh`
 
-## Digital twin (decision + mediator)
+## Digital twin (individual)
 
 ```bash
 ros2 launch nitrobot_decision decision.launch.py
