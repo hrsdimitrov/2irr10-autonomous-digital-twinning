@@ -14,6 +14,9 @@
 2. `colcon build --symlink-install`
 3. `source install/setup.bash`
 
+1. `source /opt/ros/jazzy/setup.bash`
+2. `source /opt/turtlebot3_ws/install/setup.bash`
+
 ## On the Raspberry Pi
 
 ```bash
@@ -23,10 +26,10 @@ ros2 launch turtlebot3_bringup robot.launch.py namespace:=real
 
 ## On the laptop / workstation
 
-`ros2 launch nitrobot_sim sim.launch.py`
-`ros2 launch nitrobot_sim spawn.launch.py` |
-`ros2 launch nitrobot_sim nav2.launch.py` |
-`ros2 launch nitrobot_bringup twin_system.launch.py` |
+1. `ros2 launch nitrobot_sim sim.launch.py`
+2. `ros2 launch nitrobot_sim spawn.launch.py`
+3. `ros2 launch nitrobot_sim nav2.launch.py`
+4. `ros2 launch nitrobot_bringup twin_system.launch.py`
 
 
 ## Zone goal (both robots)
