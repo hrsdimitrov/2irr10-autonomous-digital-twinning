@@ -1,81 +1,38 @@
 #!/usr/bin/env python3
-"""Start Gazebo simulation plus digital-twin decision and mediator nodes."""
+"""Gazebo + Nav2 + RViz (/sim), then decision + mediator."""
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
+# Nav2 at 45s, RViz at 50s inside sim_nav
+TWIN_NODES_SEC = 58.0
+
 
 def generate_launch_description():
-    use_sim_time = LaunchConfiguration("use_sim_time")
-    x_pose = LaunchConfiguration("x_pose")
-    y_pose = LaunchConfiguration("y_pose")
-    target_zone = LaunchConfiguration("target_zone")
-    with_nav2 = LaunchConfiguration("with_nav2")
-
     nitrobot_sim_share = get_package_share_directory("nitrobot_sim")
     nitrobot_decision_share = get_package_share_directory("nitrobot_decision")
     nitrobot_mediator_share = get_package_share_directory("nitrobot_mediator")
 
-    declare_use_sim_time = DeclareLaunchArgument(
-        "use_sim_time",
-        default_value="true",
-        description="Use simulation clock",
-    )
-    declare_x_pose = DeclareLaunchArgument(
-        "x_pose",
-        default_value="0.0",
-        description="Initial robot x position in simulation",
-    )
-    declare_y_pose = DeclareLaunchArgument(
-        "y_pose",
-        default_value="0.0",
-        description="Initial robot y position in simulation",
-    )
-    declare_target_zone = DeclareLaunchArgument(
-        "target_zone",
-        default_value="zone_2",
-        description="Initial target zone for the decision node",
-    )
-    declare_with_nav2 = DeclareLaunchArgument(
-        "with_nav2",
-        default_value="false",
-        description="Also start Nav2 on top of Gazebo simulation",
-    )
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    x_pose = LaunchConfiguration("x_pose")
+    y_pose = LaunchConfiguration("y_pose")
+    target_zone = LaunchConfiguration("target_zone")
+    use_gui = LaunchConfiguration("use_gui")
+    use_rviz = LaunchConfiguration("use_rviz")
 
-    sim_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(nitrobot_sim_share, "launch", "sim.launch.py")
-        ),
-        condition=UnlessCondition(with_nav2),
-        launch_arguments={
-            "use_sim_time": use_sim_time,
-            "x_pose": x_pose,
-            "y_pose": y_pose,
-        }.items(),
-    )
-
-    sim_nav_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(nitrobot_sim_share, "launch", "sim_nav.launch.py")
-        ),
-        condition=IfCondition(with_nav2),
-        launch_arguments={"use_sim_time": use_sim_time}.items(),
-    )
-
-    decision_launch = IncludeLaunchDescription(
+    decision = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(nitrobot_decision_share, "launch", "decision.launch.py")
         ),
         launch_arguments={"target_zone": target_zone}.items(),
     )
 
-    mediator_launch = IncludeLaunchDescription(
+    mediator = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(nitrobot_mediator_share, "launch", "mediator.launch.py")
         ),
@@ -83,14 +40,24 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            declare_use_sim_time,
-            declare_x_pose,
-            declare_y_pose,
-            declare_target_zone,
-            declare_with_nav2,
-            sim_launch,
-            sim_nav_launch,
-            decision_launch,
-            mediator_launch,
+            DeclareLaunchArgument("use_sim_time", default_value="true"),
+            DeclareLaunchArgument("x_pose", default_value="0.0"),
+            DeclareLaunchArgument("y_pose", default_value="0.0"),
+            DeclareLaunchArgument("target_zone", default_value="zone_2"),
+            DeclareLaunchArgument("use_gui", default_value="true"),
+            DeclareLaunchArgument("use_rviz", default_value="true"),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(nitrobot_sim_share, "launch", "sim_nav.launch.py")
+                ),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "x_pose": x_pose,
+                    "y_pose": y_pose,
+                    "use_gui": use_gui,
+                    "use_rviz": use_rviz,
+                }.items(),
+            ),
+            TimerAction(period=TWIN_NODES_SEC, actions=[decision, mediator]),
         ]
     )

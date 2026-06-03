@@ -12,6 +12,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>nitrobot_sim</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>nitrobot_decision</exec_depend>
   <exec_depend>nitrobot_mediator</exec_depend>
 
