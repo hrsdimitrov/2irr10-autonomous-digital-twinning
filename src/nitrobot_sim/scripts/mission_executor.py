@@ -4,6 +4,7 @@
 import math
 import os
 import re
+import threading
 import time
 
 import rclpy
@@ -58,30 +59,24 @@ class MissionExecutor(Node):
         self._world_colors       = parse_world_colors(world_path)
 
         # ── State ─────────────────────────────────────────────────────────────
-        self._zones_done     = 0
-        self._last_pose      = None
-        self._dist_traveled  = 0.0
-        self._mission_active = True
+        self._zones_done      = 0
+        self._last_pose       = None
+        self._dist_traveled   = 0.0
+        self._mission_active  = True
         self._last_drain_time = time.time()
         self._last_battery_log = self.get_clock().now()
-
-        # Track per-zone color: start from world colors, go green when done
-        self._zone_colors = dict(self._world_colors)
+        self._zone_colors     = dict(self._world_colors)
 
         # ── ROS interfaces ────────────────────────────────────────────────────
-        self._nav_client = ActionClient(
-            self, NavigateToPose, "/sim/navigate_to_pose"
-        )
+        self._nav_client = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
         self._marker_pub  = self.create_publisher(MarkerArray, "/sim/zone_markers", 10)
         self._battery_pub = self.create_publisher(String, "/sim/battery_state", 10)
 
         self.create_subscription(Odometry, "/sim/odom", self._odom_cb, 10)
         self.create_timer(1.0, self._battery_tick)
 
-        # Publish initial markers (all zones at their original world colors)
         self._publish_markers()
 
-        # ── Start mission after short delay ───────────────────────────────────
         self.get_logger().info("=" * 60)
         self.get_logger().info("MISSION START")
         self.get_logger().info(
@@ -90,12 +85,9 @@ class MissionExecutor(Node):
         )
         self.get_logger().info("=" * 60)
 
-        self._mission_timer = self.create_timer(2.0, self._start_mission_once)
-
-    # ── One-shot mission kickoff ───────────────────────────────────────────────
-    def _start_mission_once(self):
-        self._mission_timer.cancel()
-        self._run_mission()
+        # ── Run mission in a separate thread ──────────────────────────────────
+        self._mission_thread = threading.Thread(target=self._run_mission, daemon=True)
+        self._mission_thread.start()
 
     # ── Odometry callback ─────────────────────────────────────────────────────
     def _odom_cb(self, msg: Odometry):
@@ -161,29 +153,29 @@ class MissionExecutor(Node):
 
         self._marker_pub.publish(array)
 
-    # ── Main mission loop ─────────────────────────────────────────────────────
+    # ── Main mission loop (runs in its own thread) ────────────────────────────
     def _run_mission(self):
+        # Wait for Nav2 action server
+        self.get_logger().info("Waiting for Nav2 action server...")
+        self._nav_client.wait_for_server()
+        self.get_logger().info("Nav2 ready — starting mission.")
+
         for zone_name in self._fertilize_order:
             if not self._mission_active:
                 return
 
-            # Battery check
             if self._battery <= 0.0:
-                self.get_logger().warn(
-                    "[TX] Mission terminated — battery depleted"
-                )
+                self.get_logger().warn("[TX] Mission terminated — battery depleted")
                 self._mission_active = False
                 return
 
             if zone_name not in self._zones:
-                self.get_logger().warn(
-                    f"Zone '{zone_name}' not found in zone_poses.yaml, skipping."
-                )
+                self.get_logger().warn(f"Zone '{zone_name}' not in zone_poses.yaml, skipping.")
                 continue
 
             zp = self._zones[zone_name]
 
-            # ── TX: navigate ───────────────────────────────────────────────
+            # TX: navigate
             self.get_logger().info(
                 f"[TX] Navigate to {zone_name}  (x={zp['x']:.2f}, y={zp['y']:.2f})"
             )
@@ -199,44 +191,42 @@ class MissionExecutor(Node):
             goal.pose.pose.orientation.z = math.sin(yaw / 2)
             goal.pose.pose.orientation.w = math.cos(yaw / 2)
 
-            self._nav_client.wait_for_server()
             send_future = self._nav_client.send_goal_async(goal)
-            rclpy.spin_until_future_complete(self, send_future)
+            while not send_future.done():
+                time.sleep(0.1)
             goal_handle = send_future.result()
 
             if not goal_handle.accepted:
-                self.get_logger().error(
-                    f"[RX] Goal rejected for {zone_name}, skipping."
-                )
+                self.get_logger().error(f"[RX] Goal rejected for {zone_name}, skipping.")
                 continue
 
-            # ── RX: navigating ─────────────────────────────────────────────
+            # RX: navigating
             self.get_logger().info(f"[RX] Navigating to {zone_name}...")
 
             result_future = goal_handle.get_result_async()
-            rclpy.spin_until_future_complete(self, result_future)
+            while not result_future.done():
+                time.sleep(0.1)
 
-            # ── RX: arrived ────────────────────────────────────────────────
+            # RX: arrived
             self.get_logger().info(f"[RX] Arrived at {zone_name}")
 
-            # ── TX: begin fertilizing ──────────────────────────────────────
+            # TX: fertilize
             self.get_logger().info(f"[TX] Begin fertilizing {zone_name}")
-
             time.sleep(self._fertilize_duration)
 
-            # ── RX: fertilization complete ─────────────────────────────────
+            # RX: done
             self.get_logger().info(f"[RX] Fertilization complete at {zone_name}")
 
             self._zones_done += 1
             self._zone_colors[zone_name] = (0.0, 1.0, 0.0)
             self._publish_markers()
 
-            # ── TX: update count ───────────────────────────────────────────
+            # TX: count update
             self.get_logger().info(
                 f"[TX] Zones completed: {self._zones_done}/{len(self._fertilize_order)}"
             )
 
-        # ── All zones done ─────────────────────────────────────────────────────
+        # All done
         self._mission_active = False
         self.get_logger().info("=" * 60)
         self.get_logger().info(
