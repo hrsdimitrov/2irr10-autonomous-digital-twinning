@@ -201,7 +201,7 @@ class MissionExecutor(Node):
                 self._update_battery()
 
                 # log battery every 10 seconds
-                if time.time() - last_battery_log >= 10.0:
+                if time.time() - last_battery_log >= 30.0:
                     self.get_logger().info(f"[RX] Battery: {self._battery:.1f}%")
                     last_battery_log = time.time()
 
