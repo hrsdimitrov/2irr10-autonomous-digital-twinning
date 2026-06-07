@@ -1,8 +1,8 @@
 mission:
-  fertilize_duration_sec: 3.0
+  fertilize_duration_sec: 2.0
   battery_capacity: 100.0
-  battery_drain_per_sec: 0.2
-  battery_drain_per_meter: 1.0
+  battery_drain_per_sec: 0.05
+  battery_drain_per_meter: 0.3
 
   fertilize_order:
     - zone_4
