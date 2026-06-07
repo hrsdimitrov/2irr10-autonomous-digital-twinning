@@ -1,0 +1,36 @@
+mission:
+  fertilize_duration_sec: 3.0
+  battery_capacity: 100.0
+  battery_drain_per_sec: 0.2
+  battery_drain_per_meter: 1.0
+
+  fertilize_order:
+    - zone_4
+    - zone_2
+    - zone_8
+    - zone_9
+    - zone_6
+    - zone_3
+    - zone_13
+    - zone_10
+    - zone_14
+    - zone_12
+    - zone_18
+    - zone_17
+    - zone_31
+    - zone_32
+    - zone_35
+    - zone_36
+    - zone_39
+    - zone_41
+    - zone_44
+    - zone_40
+    - zone_37
+    - zone_30
+    - zone_28
+    - zone_22
+    - zone_26
+    - zone_23
+    - zone_27
+    - zone_21
+    - zone_19
