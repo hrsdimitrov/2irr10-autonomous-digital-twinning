@@ -62,7 +62,19 @@ Completed zones turn green in RViz. Terminal logs show full TX/RX communication.
 
 ---
 
-## Kill stale processes
+## After editing scripts on Windows or Mac
+
+Windows and Mac do not preserve the Linux execute bit. After modifying any script and committing, run this inside the container before building:
+
+```bash
+git update-index --chmod=+x src/nitrobot_sim/scripts/mission_executor.py
+git commit -m "fix: restore execute bit"
+git push
+```
+
+Then proceed with `git pull` and `colcon build --symlink-install` as usual.
+
+---
 
 ```bash
 pkill -9 -f 'gz sim|rviz2|ros2 launch|nav2_|nitrobot_' 2>/dev/null; ros2 daemon stop 2>/dev/null; true
