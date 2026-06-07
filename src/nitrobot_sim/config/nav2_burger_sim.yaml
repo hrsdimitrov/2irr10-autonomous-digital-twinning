@@ -2,8 +2,8 @@ amcl:
   ros__parameters:
     alpha1: 0.05
     alpha2: 0.05
-    alpha3: 0.5
-    alpha4: 0.5
+    alpha3: 0.3
+    alpha4: 0.3
     alpha5: 0.05
     base_frame_id: "base_footprint"
     beam_skip_distance: 0.5
@@ -104,14 +104,14 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    failure_tolerance: 1.0
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["FollowPath"]
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.1
-      movement_time_allowance: 10.0
+      movement_time_allowance: 5.0
     goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
