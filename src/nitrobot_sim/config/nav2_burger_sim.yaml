@@ -2,8 +2,8 @@ amcl:
   ros__parameters:
     alpha1: 0.05
     alpha2: 0.05
-    alpha3: 0.2
-    alpha4: 0.2
+    alpha3: 0.5
+    alpha4: 0.5
     alpha5: 0.05
     base_frame_id: "base_footprint"
     beam_skip_distance: 0.5
@@ -175,7 +175,7 @@ local_costmap:
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.35
+        inflation_radius: 0.25
         cost_scaling_factor: 5.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -263,7 +263,7 @@ global_costmap:
         transform_tolerance: 0.1
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.25
         cost_scaling_factor: 5.0
       always_send_full_costmap: true
 
