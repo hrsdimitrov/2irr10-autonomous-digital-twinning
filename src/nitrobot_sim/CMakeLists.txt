@@ -23,6 +23,7 @@ install(
   PROGRAMS
   scripts/sim_teleop.sh
   scripts/generate_map_from_world.py
+  scripts/mission_executor.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

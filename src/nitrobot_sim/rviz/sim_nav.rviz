@@ -49,6 +49,15 @@ Visualization Manager:
       Description Topic:
         Value: /sim/robot_description
         Depth: 5
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Zone Markers
+      Enabled: true
+      Topic:
+        Value: /sim/zone_markers
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
