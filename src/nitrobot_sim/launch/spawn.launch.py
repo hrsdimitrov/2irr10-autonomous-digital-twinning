@@ -137,6 +137,6 @@ def generate_launch_description():
             create_robot,
             bridge,
             robot_state_publisher,
-            map_odom_tf,
+            # map_odom_tf,
         ]
     )
