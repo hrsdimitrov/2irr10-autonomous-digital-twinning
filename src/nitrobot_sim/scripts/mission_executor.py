@@ -64,7 +64,6 @@ class MissionExecutor(Node):
         self._dist_traveled   = 0.0
         self._mission_active  = True
         self._last_drain_time = time.time()
-        self._last_battery_log = self.get_clock().now()
         self._zone_colors     = dict(self._world_colors)
 
         # ── ROS interfaces ────────────────────────────────────────────────────
@@ -73,7 +72,6 @@ class MissionExecutor(Node):
         self._battery_pub = self.create_publisher(String, "/sim/battery_state", 10)
 
         self.create_subscription(Odometry, "/sim/odom", self._odom_cb, 10)
-        self.create_timer(1.0, self._battery_tick)
 
         self._publish_markers()
 
@@ -99,10 +97,8 @@ class MissionExecutor(Node):
             self._dist_traveled += math.sqrt(dx * dx + dy * dy)
         self._last_pose = (x, y)
 
-    # ── Battery tick ──────────────────────────────────────────────────────────
-    def _battery_tick(self):
-        if not self._mission_active:
-            return
+    # ── Battery update (called from mission thread) ───────────────────────────
+    def _update_battery(self):
         now = time.time()
         elapsed = now - self._last_drain_time
         self._last_drain_time = now
@@ -115,12 +111,6 @@ class MissionExecutor(Node):
         msg = String()
         msg.data = f"{self._battery:.1f}%"
         self._battery_pub.publish(msg)
-
-        now_ros = self.get_clock().now()
-        elapsed_log = (now_ros - self._last_battery_log).nanoseconds / 1e9
-        if elapsed_log >= 10.0:
-            self.get_logger().info(f"[RX] Battery: {self._battery:.1f}%")
-            self._last_battery_log = now_ros
 
     # ── Marker publisher ──────────────────────────────────────────────────────
     def _publish_markers(self):
@@ -166,6 +156,7 @@ class MissionExecutor(Node):
 
             if self._battery <= 0.0:
                 self.get_logger().warn("[TX] Mission terminated — battery depleted")
+                self.get_logger().info("[RX] Robot stopped")
                 self._mission_active = False
                 return
 
@@ -204,8 +195,25 @@ class MissionExecutor(Node):
             self.get_logger().info(f"[RX] Navigating to {zone_name}...")
 
             result_future = goal_handle.get_result_async()
+            last_battery_log = time.time()
             while not result_future.done():
                 time.sleep(0.1)
+                self._update_battery()
+
+                # log battery every 10 seconds
+                if time.time() - last_battery_log >= 10.0:
+                    self.get_logger().info(f"[RX] Battery: {self._battery:.1f}%")
+                    last_battery_log = time.time()
+
+                # battery depleted mid-navigation
+                if self._battery <= 0.0:
+                    self.get_logger().warn("[TX] Mission terminated — battery depleted")
+                    cancel_future = goal_handle.cancel_goal_async()
+                    while not cancel_future.done():
+                        time.sleep(0.1)
+                    self.get_logger().info("[RX] Robot stopped")
+                    self._mission_active = False
+                    return
 
             # RX: arrived
             self.get_logger().info(f"[RX] Arrived at {zone_name}")
@@ -230,9 +238,10 @@ class MissionExecutor(Node):
         self._mission_active = False
         self.get_logger().info("=" * 60)
         self.get_logger().info(
-            f"[TX] Mission terminated — all zones complete  "
-            f"({self._zones_done}/{len(self._fertilize_order)} fertilized)"
+            f"[TX] Mission complete — all zones fertilized "
+            f"({self._zones_done}/{len(self._fertilize_order)})"
         )
+        self.get_logger().info("[RX] Robot stopped")
         self.get_logger().info("=" * 60)
 
 
