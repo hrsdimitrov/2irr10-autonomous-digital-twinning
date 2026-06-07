@@ -1,63 +1,66 @@
 # 2IRR10 Autonomous Digital Twinning
 
-## Docker Container
+## First-time Setup
 
-1. Create Docker image: `docker compose build`
-2. Run `xhost +local:docker` before starting the container
-3. Start container: `docker compose up -d`
-4. Open new bash: `docker exec -it turtlebot3_container bash`
-5. Stop the container: To stop the container run `docker compose down`.
-
-## Building the project
-
-1. `cd /ws`
-2. `colcon build --symlink-install`
-3. `source install/setup.bash`
-
-1. `source /opt/ros/jazzy/setup.bash`
-2. `source /opt/turtlebot3_ws/install/setup.bash`
-
-## On the Raspberry Pi
-
-Start bringup **before** Nav2 on the workstation. Use the `real` namespace and the frame overlay so wheel odometry TF matches the namespaced URDF (`real/odom`, `real/base_footprint`, …):
-
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and enable WSL2 integration
+2. Open CMD and enter WSL Ubuntu:
 ```bash
-export TURTLEBOT3_MODEL=burger
-ros2 launch turtlebot3_bringup robot.launch.py namespace:=real \
-  --params-file $(ros2 pkg prefix nitrobot_real)/share/nitrobot_real/config/turtlebot3_real_frames.yaml
+wsl -d Ubuntu-24.04
+```
+3. Clone the repository and build the Docker image:
+```bash
+cd ~
+git clone https://github.com/zding1-tue/cbl-win-sim.git
+cd cbl-win-sim
+sudo docker compose build
+```
+This will take 10-20 minutes on the first run.
+
+---
+
+## Running the Simulation (2 terminals)
+
+### Before starting — launch the container
+
+Open CMD and enter WSL Ubuntu:
+```bash
+wsl -d Ubuntu-24.04
+cd ~/cbl-win-sim
+sudo docker compose up -d
 ```
 
-If `nitrobot_real` is not installed on the Pi, copy `src/nitrobot_real/config/turtlebot3_real_frames.yaml` and pass its path to `--params-file`.
-
-Pi and workstation must share the same `ROS_DOMAIN_ID` and be on the same network. Check TF on the laptop:
+### Terminal 1 — Enter container and start simulation
 
 ```bash
-ros2 topic hz /real/tf
-ros2 run tf2_ros tf2_echo real/odom real/base_footprint --ros-args -r /tf:=/real/tf
+docker exec -it turtlebot3_container bash
+git config --global --add safe.directory /ws
+cd /ws
+git pull
+chmod +x /ws/src/nitrobot_sim/scripts/mission_executor.py
+colcon build --symlink-install
+source install/setup.bash
+ros2 launch nitrobot_sim sim_full.launch.py
 ```
 
-## On the laptop / workstation
+Wait until Gazebo and RViz are fully loaded with the map and robot visible,
+and Nav2 has printed `Managed nodes are active` (~1 minute).
 
-1. `ros2 launch nitrobot_sim sim.launch.py`
-2. `ros2 launch nitrobot_sim spawn.launch.py`
-3. `ros2 launch nitrobot_sim nav2.launch.py`
-4. `ros2 launch nitrobot_bringup twin_system.launch.py`
+### Terminal 2 — Start mission executor
 
-
-## Zone goal (both robots)
-
+Open a new CMD and run:
 ```bash
-ros2 run nitrobot_decision set_zone.sh zone_5
+wsl -d Ubuntu-24.04
+docker exec -it turtlebot3_container bash
+source /opt/ros/jazzy/setup.bash
+source /opt/turtlebot3_ws/install/setup.bash
+source /ws/install/setup.bash
+ros2 launch nitrobot_sim mission.launch.py
 ```
 
-## Simulation only (manual)
+The robot will automatically navigate to each fertilization zone in sequence.
+Completed zones turn green in RViz. Terminal logs show full TX/RX communication.
 
-**1.** `ros2 launch nitrobot_sim sim.launch.py`  
-**2.** `ros2 launch nitrobot_sim spawn.launch.py`  
-**3.** `ros2 launch nitrobot_sim nav2.launch.py`  
-**4.** `ros2 launch nitrobot_decision decision.launch.py`  
-**5.** `ros2 launch nitrobot_mediator mediator.launch.py`
-
+---
 
 ## Kill stale processes
 
