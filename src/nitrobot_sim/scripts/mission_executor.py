@@ -31,7 +31,7 @@ STUCK_TIME_SEC     = 15.0   # declare stuck after 15s no movement
 STUCK_DIST_M       = 0.05   # movement threshold (m)
 STUCK_ANGLE_RAD    = 0.05   # rotation threshold (rad)
 BACKUP_SPEED       = -0.1   # m/s (negative = backward)
-BACKUP_DURATION    = 5.0    # seconds to back up
+BACKUP_DURATION    = 7.0    # seconds to back up
 TURN_SPEED         = -0.5   # rad/s (negative = right)
 TURN_DURATION      = 2.0    # seconds to turn after backup (~28 deg)
 
@@ -197,7 +197,7 @@ class MissionExecutor(Node):
 
     # ------------------------------------------------------------------ backup
     def _do_backup(self):
-        """直接发cmd_vel后退3秒脱墙。"""
+        """cmd_vel"""
         self.get_logger().info("[RX] Stuck — backing up to escape wall...")
         end = time.time() + BACKUP_DURATION
         while time.time() < end:
@@ -209,7 +209,7 @@ class MissionExecutor(Node):
         stop = TwistStamped()
         stop.header.stamp = self.get_clock().now().to_msg()
         self._cmd_vel_pub.publish(stop)
-        time.sleep(1.0)
+        time.sleep(5.0)
 
         # Turn right slightly so Nav2 replans from a different angle
         self.get_logger().info("[RX] Turning right after backup...")
