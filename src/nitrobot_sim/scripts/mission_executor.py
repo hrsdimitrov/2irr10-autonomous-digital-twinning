@@ -31,9 +31,9 @@ STUCK_TIME_SEC     = 15.0   # declare stuck after 15s no movement
 STUCK_DIST_M       = 0.05   # movement threshold (m)
 STUCK_ANGLE_RAD    = 0.05   # rotation threshold (rad)
 BACKUP_SPEED       = -0.1   # m/s (negative = backward)
-BACKUP_DURATION    = 3.0    # seconds to back up
+BACKUP_DURATION    = 5.0    # seconds to back up
 TURN_SPEED         = -0.5   # rad/s (negative = right)
-TURN_DURATION      = 1.0    # seconds to turn after backup (~28 deg)
+TURN_DURATION      = 2.0    # seconds to turn after backup (~28 deg)
 
 
 def parse_world_colors(world_path: str) -> dict:
