@@ -10,7 +10,7 @@ import time
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
@@ -26,6 +26,7 @@ MARKER_QOS = QoSProfile(
 )
 
 NAV_TIMEOUT_SEC    = 180.0  # 3 min total timeout per zone
+RETRY_TIMEOUT_SEC  = 360.0  # 6 min timeout for retry
 STUCK_TIME_SEC     = 15.0   # declare stuck after 15s no movement
 STUCK_DIST_M       = 0.05   # movement threshold (m)
 STUCK_ANGLE_RAD    = 0.05   # rotation threshold (rad)
@@ -69,13 +70,16 @@ class MissionExecutor(Node):
         self._frame_id           = zones_cfg.get("frame_id", "map")
         self._world_colors       = parse_world_colors(world_path)
 
-        self._zones_done       = 0
-        self._last_pose        = None
-        self._dist_traveled    = 0.0
-        self._mission_active   = True
-        self._last_drain_time  = time.time()
-        self._last_battery_log = time.time()
-        self._zone_colors      = dict(self._world_colors)
+        self._zones_done         = 0
+        self._last_pose          = None
+        self._dist_traveled      = 0.0
+        self._mission_active     = True
+        self._battery_depleted   = False   # flag: set when battery hits 0
+        self._current_goal_handle = None   # track active nav goal for cancellation
+        self._goal_lock          = threading.Lock()
+        self._last_drain_time    = time.time()
+        self._last_battery_log   = time.time()
+        self._zone_colors        = dict(self._world_colors)
 
         # odom state for stuck detection
         self._odom_x   = 0.0
@@ -83,8 +87,8 @@ class MissionExecutor(Node):
         self._odom_yaw = 0.0
         self._odom_lock = threading.Lock()
 
-        self._nav_client = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
-        self._marker_pub = self.create_publisher(MarkerArray, "/sim/zone_markers", MARKER_QOS)
+        self._nav_client  = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
+        self._marker_pub  = self.create_publisher(MarkerArray, "/sim/zone_markers", MARKER_QOS)
         self._battery_pub = self.create_publisher(String, "/sim/battery_state", 10)
         self._cmd_vel_pub = self.create_publisher(TwistStamped, "/sim/cmd_vel", 10)
 
@@ -106,6 +110,7 @@ class MissionExecutor(Node):
         self._mission_thread = threading.Thread(target=self._run_mission, daemon=True)
         self._mission_thread.start()
 
+    # ------------------------------------------------------------------ odom
     def _odom_cb(self, msg: Odometry):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
@@ -122,6 +127,7 @@ class MissionExecutor(Node):
             self._odom_y   = y
             self._odom_yaw = yaw
 
+    # ------------------------------------------------------------------ battery
     def _battery_loop(self):
         while self._mission_active:
             time.sleep(1.0)
@@ -148,6 +154,15 @@ class MissionExecutor(Node):
             self.get_logger().info(f"[RX] Battery: {self._battery:.1f}%")
             self._last_battery_log = time.time()
 
+        # Battery just hit 0: cancel active nav goal immediately
+        if self._battery <= 0.0 and not self._battery_depleted:
+            self._battery_depleted = True
+            self.get_logger().warn("[RX] Battery depleted — cancelling navigation")
+            with self._goal_lock:
+                if self._current_goal_handle is not None:
+                    self._current_goal_handle.cancel_goal_async()
+
+    # ------------------------------------------------------------------ markers
     def _publish_markers(self):
         array = MarkerArray()
         for i, zone_name in enumerate(self._world_colors):
@@ -178,6 +193,7 @@ class MissionExecutor(Node):
 
         self._marker_pub.publish(array)
 
+    # ------------------------------------------------------------------ backup
     def _do_backup(self):
         """直接发cmd_vel后退3秒脱墙。"""
         self.get_logger().info("[RX] Stuck — backing up to escape wall...")
@@ -188,14 +204,32 @@ class MissionExecutor(Node):
             msg.twist.linear.x = BACKUP_SPEED
             self._cmd_vel_pub.publish(msg)
             time.sleep(0.1)
-        # 停止
         stop = TwistStamped()
         stop.header.stamp = self.get_clock().now().to_msg()
         self._cmd_vel_pub.publish(stop)
         time.sleep(0.5)
         self.get_logger().info("[RX] Backup complete.")
 
+    # ------------------------------------------------------------------ terminate
+    def _terminate_mission(self, reason: str):
+        """统一任务终止：打印report，停机器人，清理状态。"""
+        self._mission_active = False
+        # Stop robot
+        stop = TwistStamped()
+        stop.header.stamp = self.get_clock().now().to_msg()
+        self._cmd_vel_pub.publish(stop)
+
+        self.get_logger().info("=" * 60)
+        self.get_logger().info(f"[TX] Mission terminated — {reason}")
+        self.get_logger().info(
+            f"[TX] Zones completed: {self._zones_done}/{len(self._fertilize_order)}"
+        )
+        self.get_logger().info(f"[RX] Battery remaining: {self._battery:.1f}%")
+        self.get_logger().info("=" * 60)
+
+    # ------------------------------------------------------------------ navigate
     def _navigate_to(self, zone_name: str, timeout: float) -> bool:
+        """Returns True on arrival, False on timeout/battery/rejection."""
         zp = self._zones[zone_name]
 
         goal = NavigateToPose.Goal()
@@ -211,12 +245,17 @@ class MissionExecutor(Node):
 
         send_future = self._nav_client.send_goal_async(goal)
         while not send_future.done():
+            if self._battery_depleted:
+                return False
             time.sleep(0.1)
         goal_handle = send_future.result()
 
         if not goal_handle.accepted:
             self.get_logger().error(f"[RX] Goal rejected for {zone_name}, skipping.")
             return False
+
+        with self._goal_lock:
+            self._current_goal_handle = goal_handle
 
         self.get_logger().info(f"[RX] Navigating to {zone_name}...")
 
@@ -234,10 +273,20 @@ class MissionExecutor(Node):
         while not result_future.done():
             now = time.time()
 
+            # Battery depleted mid-navigation
+            if self._battery_depleted:
+                # goal already cancelled by _battery_tick; just wait briefly
+                time.sleep(0.5)
+                with self._goal_lock:
+                    self._current_goal_handle = None
+                return False
+
             # 3min total timeout
             if now - nav_start > timeout:
                 goal_handle.cancel_goal_async()
                 time.sleep(0.5)
+                with self._goal_lock:
+                    self._current_goal_handle = None
                 self._do_backup()
                 return False
 
@@ -246,20 +295,23 @@ class MissionExecutor(Node):
                 with self._odom_lock:
                     cx, cy, cyaw = self._odom_x, self._odom_y, self._odom_yaw
 
-                dist  = math.sqrt((cx - last_check_x)**2 + (cy - last_check_y)**2)
+                dist   = math.sqrt((cx - last_check_x)**2 + (cy - last_check_y)**2)
                 dangle = abs(cyaw - last_check_yaw)
 
                 if dist < STUCK_DIST_M and dangle < STUCK_ANGLE_RAD:
                     if stuck_since is None:
                         stuck_since = now
                     elif now - stuck_since >= STUCK_TIME_SEC:
-                        # 卡死：cancel并后退
                         goal_handle.cancel_goal_async()
                         time.sleep(0.5)
+                        with self._goal_lock:
+                            self._current_goal_handle = None
                         self._do_backup()
                         stuck_since = None
-                        # 后退完重新发goal
-                        return self._navigate_to(zone_name, timeout - (now - nav_start))
+                        remaining = timeout - (now - nav_start)
+                        if remaining <= 0 or self._battery_depleted:
+                            return False
+                        return self._navigate_to(zone_name, remaining)
                 else:
                     stuck_since = None
 
@@ -270,8 +322,11 @@ class MissionExecutor(Node):
 
             time.sleep(0.1)
 
+        with self._goal_lock:
+            self._current_goal_handle = None
         return True
 
+    # ------------------------------------------------------------------ fertilize
     def _fertilize(self, zone_name: str):
         self.get_logger().info(f"[TX] Begin fertilizing {zone_name}")
         time.sleep(self._fertilize_duration)
@@ -284,6 +339,7 @@ class MissionExecutor(Node):
             f"[TX] Zones completed: {self._zones_done}/{len(self._fertilize_order)}"
         )
 
+    # ------------------------------------------------------------------ mission
     def _run_mission(self):
         self.get_logger().info("Waiting for Nav2 action server...")
         self._nav_client.wait_for_server()
@@ -292,12 +348,8 @@ class MissionExecutor(Node):
         retry_list = []
 
         for zone_name in self._fertilize_order:
-            if not self._mission_active:
-                return
-            if self._battery <= 0.0:
-                self.get_logger().warn("[TX] Mission terminated — battery depleted")
-                self._mission_active = False
-                return
+            if not self._mission_active or self._battery_depleted:
+                break
             if zone_name not in self._zones:
                 self.get_logger().warn(f"Zone '{zone_name}' not in zone_poses.yaml, skipping.")
                 continue
@@ -309,6 +361,9 @@ class MissionExecutor(Node):
 
             arrived = self._navigate_to(zone_name, NAV_TIMEOUT_SEC)
 
+            if self._battery_depleted:
+                break
+
             if not arrived:
                 self.get_logger().warn(f"[RX] Navigation timeout, skipping {zone_name}")
                 retry_list.append(zone_name)
@@ -317,18 +372,18 @@ class MissionExecutor(Node):
             self.get_logger().info(f"[RX] Arrived at {zone_name}")
             self._fertilize(zone_name)
 
+        if self._battery_depleted:
+            self._terminate_mission("battery depleted")
+            return
+
         if retry_list:
             self.get_logger().info("=" * 60)
             self.get_logger().info(f"[TX] Retrying zones: {', '.join(retry_list)}")
             self.get_logger().info("=" * 60)
 
             for zone_name in retry_list:
-                if not self._mission_active:
-                    return
-                if self._battery <= 0.0:
-                    self.get_logger().warn("[TX] Mission terminated — battery depleted")
-                    self._mission_active = False
-                    return
+                if not self._mission_active or self._battery_depleted:
+                    break
 
                 self.get_logger().info(
                     f"[TX] Navigate to {zone_name} (retry)  "
@@ -336,6 +391,9 @@ class MissionExecutor(Node):
                 )
 
                 arrived = self._navigate_to(zone_name, RETRY_TIMEOUT_SEC)
+
+                if self._battery_depleted:
+                    break
 
                 if not arrived:
                     self.get_logger().warn(
@@ -346,13 +404,11 @@ class MissionExecutor(Node):
                 self.get_logger().info(f"[RX] Arrived at {zone_name}")
                 self._fertilize(zone_name)
 
-        self._mission_active = False
-        self.get_logger().info("=" * 60)
-        self.get_logger().info(
-            f"[TX] Mission terminated — all zones complete  "
-            f"({self._zones_done}/{len(self._fertilize_order)} fertilized)"
-        )
-        self.get_logger().info("=" * 60)
+        if self._battery_depleted:
+            self._terminate_mission("battery depleted")
+            return
+
+        self._terminate_mission("all zones complete")
 
 
 def main(args=None):
