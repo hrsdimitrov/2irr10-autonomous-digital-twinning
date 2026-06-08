@@ -25,6 +25,9 @@ MARKER_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.RELIABLE,
 )
 
+NAV_TIMEOUT_SEC   = 180.0   # 3 min first attempt
+RETRY_TIMEOUT_SEC = 360.0   # 6 min retry attempt
+
 
 def parse_world_colors(world_path: str) -> dict:
     """Parse zone colors from farm_world.world. Returns {zone_name: (r,g,b)}."""
@@ -80,7 +83,6 @@ class MissionExecutor(Node):
         self._battery_pub = self.create_publisher(String, "/sim/battery_state", 10)
 
         self.create_subscription(Odometry, "/sim/odom", self._odom_cb, 10)
-        self.create_timer(1.0, self._battery_tick)
 
         self._publish_markers()
 
@@ -91,6 +93,10 @@ class MissionExecutor(Node):
             + ", ".join(self._fertilize_order)
         )
         self.get_logger().info("=" * 60)
+
+        # ── Battery thread ────────────────────────────────────────────────────
+        self._battery_thread = threading.Thread(target=self._battery_loop, daemon=True)
+        self._battery_thread.start()
 
         # ── Run mission in a separate thread ──────────────────────────────────
         self._mission_thread = threading.Thread(target=self._run_mission, daemon=True)
@@ -105,6 +111,12 @@ class MissionExecutor(Node):
             dy = y - self._last_pose[1]
             self._dist_traveled += math.sqrt(dx * dx + dy * dy)
         self._last_pose = (x, y)
+
+    # ── Battery loop (wall-time thread) ───────────────────────────────────────
+    def _battery_loop(self):
+        while self._mission_active:
+            time.sleep(1.0)
+            self._battery_tick()
 
     # ── Battery tick ──────────────────────────────────────────────────────────
     def _battery_tick(self):
@@ -158,80 +170,123 @@ class MissionExecutor(Node):
 
         self._marker_pub.publish(array)
 
+    # ── Navigate to a zone with timeout; returns True if arrived ─────────────
+    def _navigate_to(self, zone_name: str, timeout: float) -> bool:
+        zp = self._zones[zone_name]
+
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = self._frame_id
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = float(zp["x"])
+        goal.pose.pose.position.y = float(zp["y"])
+        goal.pose.pose.position.z = 0.0
+        yaw = float(zp.get("yaw", 0.0))
+        goal.pose.pose.orientation.z = math.sin(yaw / 2)
+        goal.pose.pose.orientation.w = math.cos(yaw / 2)
+
+        send_future = self._nav_client.send_goal_async(goal)
+        while not send_future.done():
+            time.sleep(0.1)
+        goal_handle = send_future.result()
+
+        if not goal_handle.accepted:
+            self.get_logger().error(f"[RX] Goal rejected for {zone_name}, skipping.")
+            return False
+
+        self.get_logger().info(f"[RX] Navigating to {zone_name}...")
+
+        result_future = goal_handle.get_result_async()
+        start = time.time()
+        while not result_future.done():
+            if time.time() - start > timeout:
+                goal_handle.cancel_goal_async()
+                return False
+            time.sleep(0.1)
+
+        return True
+
+    # ── Fertilize a zone ─────────────────────────────────────────────────────
+    def _fertilize(self, zone_name: str):
+        self.get_logger().info(f"[TX] Begin fertilizing {zone_name}")
+        time.sleep(self._fertilize_duration)
+        self.get_logger().info(f"[RX] Fertilization complete at {zone_name}")
+
+        self._zones_done += 1
+        self._zone_colors[zone_name] = (0.0, 1.0, 0.0)
+        self._publish_markers()
+        self.get_logger().info(
+            f"[TX] Zones completed: {self._zones_done}/{len(self._fertilize_order)}"
+        )
+
     # ── Main mission loop (runs in its own thread) ────────────────────────────
     def _run_mission(self):
-        # Wait for Nav2 action server
         self.get_logger().info("Waiting for Nav2 action server...")
         self._nav_client.wait_for_server()
         self.get_logger().info("Nav2 ready — starting mission.")
 
+        retry_list = []
+
+        # ── First pass ───────────────────────────────────────────────────────
         for zone_name in self._fertilize_order:
             if not self._mission_active:
                 return
-
             if self._battery <= 0.0:
                 self.get_logger().warn("[TX] Mission terminated — battery depleted")
                 self._mission_active = False
                 return
-
             if zone_name not in self._zones:
                 self.get_logger().warn(f"Zone '{zone_name}' not in zone_poses.yaml, skipping.")
                 continue
 
-            zp = self._zones[zone_name]
-
-            # TX: navigate
             self.get_logger().info(
-                f"[TX] Navigate to {zone_name}  (x={zp['x']:.2f}, y={zp['y']:.2f})"
+                f"[TX] Navigate to {zone_name}  "
+                f"(x={self._zones[zone_name]['x']:.2f}, y={self._zones[zone_name]['y']:.2f})"
             )
 
-            goal = NavigateToPose.Goal()
-            goal.pose = PoseStamped()
-            goal.pose.header.frame_id = self._frame_id
-            goal.pose.header.stamp = self.get_clock().now().to_msg()
-            goal.pose.pose.position.x = float(zp["x"])
-            goal.pose.pose.position.y = float(zp["y"])
-            goal.pose.pose.position.z = 0.0
-            yaw = float(zp.get("yaw", 0.0))
-            goal.pose.pose.orientation.z = math.sin(yaw / 2)
-            goal.pose.pose.orientation.w = math.cos(yaw / 2)
+            arrived = self._navigate_to(zone_name, NAV_TIMEOUT_SEC)
 
-            send_future = self._nav_client.send_goal_async(goal)
-            while not send_future.done():
-                time.sleep(0.1)
-            goal_handle = send_future.result()
-
-            if not goal_handle.accepted:
-                self.get_logger().error(f"[RX] Goal rejected for {zone_name}, skipping.")
+            if not arrived:
+                self.get_logger().warn(f"[RX] Navigation timeout, skipping {zone_name}")
+                retry_list.append(zone_name)
                 continue
 
-            # RX: navigating
-            self.get_logger().info(f"[RX] Navigating to {zone_name}...")
-
-            result_future = goal_handle.get_result_async()
-            while not result_future.done():
-                time.sleep(0.1)
-
-            # RX: arrived
             self.get_logger().info(f"[RX] Arrived at {zone_name}")
+            self._fertilize(zone_name)
 
-            # TX: fertilize
-            self.get_logger().info(f"[TX] Begin fertilizing {zone_name}")
-            time.sleep(self._fertilize_duration)
-
-            # RX: done
-            self.get_logger().info(f"[RX] Fertilization complete at {zone_name}")
-
-            self._zones_done += 1
-            self._zone_colors[zone_name] = (0.0, 1.0, 0.0)
-            self._publish_markers()
-
-            # TX: count update
+        # ── Retry pass ───────────────────────────────────────────────────────
+        if retry_list:
+            self.get_logger().info("=" * 60)
             self.get_logger().info(
-                f"[TX] Zones completed: {self._zones_done}/{len(self._fertilize_order)}"
+                f"[TX] Retrying zones: {', '.join(retry_list)}"
             )
+            self.get_logger().info("=" * 60)
 
-        # All done
+            for zone_name in retry_list:
+                if not self._mission_active:
+                    return
+                if self._battery <= 0.0:
+                    self.get_logger().warn("[TX] Mission terminated — battery depleted")
+                    self._mission_active = False
+                    return
+
+                self.get_logger().info(
+                    f"[TX] Navigate to {zone_name} (retry)  "
+                    f"(x={self._zones[zone_name]['x']:.2f}, y={self._zones[zone_name]['y']:.2f})"
+                )
+
+                arrived = self._navigate_to(zone_name, RETRY_TIMEOUT_SEC)
+
+                if not arrived:
+                    self.get_logger().warn(
+                        f"[RX] Retry timeout, {zone_name} skipped permanently"
+                    )
+                    continue
+
+                self.get_logger().info(f"[RX] Arrived at {zone_name}")
+                self._fertilize(zone_name)
+
+        # ── All done ─────────────────────────────────────────────────────────
         self._mission_active = False
         self.get_logger().info("=" * 60)
         self.get_logger().info(
