@@ -71,7 +71,7 @@ class MissionExecutor(Node):
         self._dist_traveled   = 0.0
         self._mission_active  = True
         self._last_drain_time = time.time()
-        self._last_battery_log = self.get_clock().now()
+        self._last_battery_log = time.time()
         self._zone_colors     = dict(self._world_colors)
 
         # ── ROS interfaces ────────────────────────────────────────────────────
@@ -123,11 +123,9 @@ class MissionExecutor(Node):
         msg.data = f"{self._battery:.1f}%"
         self._battery_pub.publish(msg)
 
-        now_ros = self.get_clock().now()
-        elapsed_log = (now_ros - self._last_battery_log).nanoseconds / 1e9
-        if elapsed_log >= 10.0:
+        if time.time() - self._last_battery_log >= 30.0:
             self.get_logger().info(f"[RX] Battery: {self._battery:.1f}%")
-            self._last_battery_log = now_ros
+            self._last_battery_log = time.time()
 
     # ── Marker publisher ──────────────────────────────────────────────────────
     def _publish_markers(self):
