@@ -209,7 +209,7 @@ class MissionExecutor(Node):
         stop = TwistStamped()
         stop.header.stamp = self.get_clock().now().to_msg()
         self._cmd_vel_pub.publish(stop)
-        time.sleep(0.3)
+        time.sleep(1.0)
 
         # Turn right slightly so Nav2 replans from a different angle
         self.get_logger().info("[RX] Turning right after backup...")
@@ -223,12 +223,12 @@ class MissionExecutor(Node):
         stop2 = TwistStamped()
         stop2.header.stamp = self.get_clock().now().to_msg()
         self._cmd_vel_pub.publish(stop2)
-        time.sleep(0.5)
+        time.sleep(1.0)
         self.get_logger().info("[RX] Backup complete.")
 
     # ------------------------------------------------------------------ terminate
     def _terminate_mission(self, reason: str):
-        """统一任务终止：打印report，停机器人，清理状态。"""
+        """report"""
         self._mission_active = False
         # Stop robot
         stop = TwistStamped()
@@ -300,7 +300,7 @@ class MissionExecutor(Node):
             # 3min total timeout
             if now - nav_start > timeout:
                 goal_handle.cancel_goal_async()
-                time.sleep(0.5)
+                time.sleep(1.5)
                 with self._goal_lock:
                     self._current_goal_handle = None
                 self._do_backup()
@@ -319,7 +319,7 @@ class MissionExecutor(Node):
                         stuck_since = now
                     elif now - stuck_since >= STUCK_TIME_SEC:
                         goal_handle.cancel_goal_async()
-                        time.sleep(0.5)
+                        time.sleep(1.5)
                         with self._goal_lock:
                             self._current_goal_handle = None
                         self._do_backup()
