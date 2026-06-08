@@ -31,7 +31,9 @@ STUCK_TIME_SEC     = 15.0   # declare stuck after 15s no movement
 STUCK_DIST_M       = 0.05   # movement threshold (m)
 STUCK_ANGLE_RAD    = 0.05   # rotation threshold (rad)
 BACKUP_SPEED       = -0.1   # m/s (negative = backward)
-BACKUP_DURATION    = 5.0    # seconds to back up
+BACKUP_DURATION    = 3.0    # seconds to back up
+TURN_SPEED         = -0.5   # rad/s (negative = right)
+TURN_DURATION      = 1.0    # seconds to turn after backup (~28 deg)
 
 
 def parse_world_colors(world_path: str) -> dict:
@@ -207,6 +209,20 @@ class MissionExecutor(Node):
         stop = TwistStamped()
         stop.header.stamp = self.get_clock().now().to_msg()
         self._cmd_vel_pub.publish(stop)
+        time.sleep(0.3)
+
+        # Turn right slightly so Nav2 replans from a different angle
+        self.get_logger().info("[RX] Turning right after backup...")
+        turn_end = time.time() + TURN_DURATION
+        while time.time() < turn_end:
+            msg = TwistStamped()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.twist.angular.z = TURN_SPEED
+            self._cmd_vel_pub.publish(msg)
+            time.sleep(0.1)
+        stop2 = TwistStamped()
+        stop2.header.stamp = self.get_clock().now().to_msg()
+        self._cmd_vel_pub.publish(stop2)
         time.sleep(0.5)
         self.get_logger().info("[RX] Backup complete.")
 
