@@ -11,7 +11,7 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import BackUp, NavigateToPose
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.node import Node
@@ -27,10 +27,10 @@ MARKER_QOS = QoSProfile(
 
 NAV_TIMEOUT_SEC   = 180.0   # 3 min first attempt
 RETRY_TIMEOUT_SEC = 360.0   # 6 min retry attempt
+BACKUP_DIST_M     = 0.3     # back up 0.3m after timeout
 
 
 def parse_world_colors(world_path: str) -> dict:
-    """Parse zone colors from farm_world.world. Returns {zone_name: (r,g,b)}."""
     colors = {}
     pattern = re.compile(
         r"<model name=\"(zone_\d+)\".*?<ambient>([\d.]+)\s+([\d.]+)\s+([\d.]+)",
@@ -47,7 +47,6 @@ class MissionExecutor(Node):
     def __init__(self):
         super().__init__("mission_executor")
 
-        # ── Load configs ──────────────────────────────────────────────────────
         sim_share = get_package_share_directory("nitrobot_sim")
 
         mission_path = os.path.join(sim_share, "config", "mission.yaml")
@@ -68,19 +67,18 @@ class MissionExecutor(Node):
         self._frame_id           = zones_cfg.get("frame_id", "map")
         self._world_colors       = parse_world_colors(world_path)
 
-        # ── State ─────────────────────────────────────────────────────────────
-        self._zones_done      = 0
-        self._last_pose       = None
-        self._dist_traveled   = 0.0
-        self._mission_active  = True
-        self._last_drain_time = time.time()
+        self._zones_done       = 0
+        self._last_pose        = None
+        self._dist_traveled    = 0.0
+        self._mission_active   = True
+        self._last_drain_time  = time.time()
         self._last_battery_log = time.time()
-        self._zone_colors     = dict(self._world_colors)
+        self._zone_colors      = dict(self._world_colors)
 
-        # ── ROS interfaces ────────────────────────────────────────────────────
-        self._nav_client = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
-        self._marker_pub  = self.create_publisher(MarkerArray, "/sim/zone_markers", MARKER_QOS)
-        self._battery_pub = self.create_publisher(String, "/sim/battery_state", 10)
+        self._nav_client    = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
+        self._backup_client = ActionClient(self, BackUp, "/sim/backup")
+        self._marker_pub    = self.create_publisher(MarkerArray, "/sim/zone_markers", MARKER_QOS)
+        self._battery_pub   = self.create_publisher(String, "/sim/battery_state", 10)
 
         self.create_subscription(Odometry, "/sim/odom", self._odom_cb, 10)
 
@@ -94,15 +92,12 @@ class MissionExecutor(Node):
         )
         self.get_logger().info("=" * 60)
 
-        # ── Battery thread ────────────────────────────────────────────────────
         self._battery_thread = threading.Thread(target=self._battery_loop, daemon=True)
         self._battery_thread.start()
 
-        # ── Run mission in a separate thread ──────────────────────────────────
         self._mission_thread = threading.Thread(target=self._run_mission, daemon=True)
         self._mission_thread.start()
 
-    # ── Odometry callback ─────────────────────────────────────────────────────
     def _odom_cb(self, msg: Odometry):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
@@ -112,13 +107,11 @@ class MissionExecutor(Node):
             self._dist_traveled += math.sqrt(dx * dx + dy * dy)
         self._last_pose = (x, y)
 
-    # ── Battery loop (wall-time thread) ───────────────────────────────────────
     def _battery_loop(self):
         while self._mission_active:
             time.sleep(1.0)
             self._battery_tick()
 
-    # ── Battery tick ──────────────────────────────────────────────────────────
     def _battery_tick(self):
         if not self._mission_active:
             return
@@ -139,7 +132,6 @@ class MissionExecutor(Node):
             self.get_logger().info(f"[RX] Battery: {self._battery:.1f}%")
             self._last_battery_log = time.time()
 
-    # ── Marker publisher ──────────────────────────────────────────────────────
     def _publish_markers(self):
         array = MarkerArray()
         for i, zone_name in enumerate(self._world_colors):
@@ -170,7 +162,38 @@ class MissionExecutor(Node):
 
         self._marker_pub.publish(array)
 
-    # ── Navigate to a zone with timeout; returns True if arrived ─────────────
+    def _do_backup(self):
+        """Back up 0.3m to escape wall, then pause briefly."""
+        self.get_logger().info("[RX] Stuck — backing up to escape wall...")
+        if not self._backup_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().warn("Backup action server not available, skipping backup.")
+            return
+
+        goal = BackUp.Goal()
+        goal.target.x = BACKUP_DIST_M
+        goal.speed = 0.1
+
+        send_future = self._backup_client.send_goal_async(goal)
+        start = time.time()
+        while not send_future.done():
+            if time.time() - start > 5.0:
+                return
+            time.sleep(0.1)
+
+        goal_handle = send_future.result()
+        if not goal_handle.accepted:
+            return
+
+        result_future = goal_handle.get_result_async()
+        start = time.time()
+        while not result_future.done():
+            if time.time() - start > 10.0:
+                break
+            time.sleep(0.1)
+
+        time.sleep(0.5)
+        self.get_logger().info("[RX] Backup complete.")
+
     def _navigate_to(self, zone_name: str, timeout: float) -> bool:
         zp = self._zones[zone_name]
 
@@ -201,12 +224,13 @@ class MissionExecutor(Node):
         while not result_future.done():
             if time.time() - start > timeout:
                 goal_handle.cancel_goal_async()
+                time.sleep(0.5)
+                self._do_backup()
                 return False
             time.sleep(0.1)
 
         return True
 
-    # ── Fertilize a zone ─────────────────────────────────────────────────────
     def _fertilize(self, zone_name: str):
         self.get_logger().info(f"[TX] Begin fertilizing {zone_name}")
         time.sleep(self._fertilize_duration)
@@ -219,7 +243,6 @@ class MissionExecutor(Node):
             f"[TX] Zones completed: {self._zones_done}/{len(self._fertilize_order)}"
         )
 
-    # ── Main mission loop (runs in its own thread) ────────────────────────────
     def _run_mission(self):
         self.get_logger().info("Waiting for Nav2 action server...")
         self._nav_client.wait_for_server()
@@ -227,7 +250,6 @@ class MissionExecutor(Node):
 
         retry_list = []
 
-        # ── First pass ───────────────────────────────────────────────────────
         for zone_name in self._fertilize_order:
             if not self._mission_active:
                 return
@@ -254,12 +276,9 @@ class MissionExecutor(Node):
             self.get_logger().info(f"[RX] Arrived at {zone_name}")
             self._fertilize(zone_name)
 
-        # ── Retry pass ───────────────────────────────────────────────────────
         if retry_list:
             self.get_logger().info("=" * 60)
-            self.get_logger().info(
-                f"[TX] Retrying zones: {', '.join(retry_list)}"
-            )
+            self.get_logger().info(f"[TX] Retrying zones: {', '.join(retry_list)}")
             self.get_logger().info("=" * 60)
 
             for zone_name in retry_list:
@@ -286,7 +305,6 @@ class MissionExecutor(Node):
                 self.get_logger().info(f"[RX] Arrived at {zone_name}")
                 self._fertilize(zone_name)
 
-        # ── All done ─────────────────────────────────────────────────────────
         self._mission_active = False
         self.get_logger().info("=" * 60)
         self.get_logger().info(
