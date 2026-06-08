@@ -10,8 +10,8 @@ import time
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import BackUp, NavigateToPose
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
+from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.node import Node
@@ -25,9 +25,12 @@ MARKER_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.RELIABLE,
 )
 
-NAV_TIMEOUT_SEC   = 180.0   # 3 min first attempt
-RETRY_TIMEOUT_SEC = 360.0   # 6 min retry attempt
-BACKUP_DIST_M     = 0.3     # back up 0.3m after timeout
+NAV_TIMEOUT_SEC    = 180.0  # 3 min total timeout per zone
+STUCK_TIME_SEC     = 15.0   # declare stuck after 15s no movement
+STUCK_DIST_M       = 0.05   # movement threshold (m)
+STUCK_ANGLE_RAD    = 0.05   # rotation threshold (rad)
+BACKUP_SPEED       = -0.1   # m/s (negative = backward)
+BACKUP_DURATION    = 3.0    # seconds to back up
 
 
 def parse_world_colors(world_path: str) -> dict:
@@ -48,7 +51,6 @@ class MissionExecutor(Node):
         super().__init__("mission_executor")
 
         sim_share = get_package_share_directory("nitrobot_sim")
-
         mission_path = os.path.join(sim_share, "config", "mission.yaml")
         zones_path   = os.path.join(sim_share, "config", "zone_poses.yaml")
         world_path   = os.path.join(sim_share, "worlds", "farm_world.world")
@@ -75,10 +77,16 @@ class MissionExecutor(Node):
         self._last_battery_log = time.time()
         self._zone_colors      = dict(self._world_colors)
 
-        self._nav_client    = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
-        self._backup_client = ActionClient(self, BackUp, "/sim/backup")
-        self._marker_pub    = self.create_publisher(MarkerArray, "/sim/zone_markers", MARKER_QOS)
-        self._battery_pub   = self.create_publisher(String, "/sim/battery_state", 10)
+        # odom state for stuck detection
+        self._odom_x   = 0.0
+        self._odom_y   = 0.0
+        self._odom_yaw = 0.0
+        self._odom_lock = threading.Lock()
+
+        self._nav_client = ActionClient(self, NavigateToPose, "/sim/navigate_to_pose")
+        self._marker_pub = self.create_publisher(MarkerArray, "/sim/zone_markers", MARKER_QOS)
+        self._battery_pub = self.create_publisher(String, "/sim/battery_state", 10)
+        self._cmd_vel_pub = self.create_publisher(TwistStamped, "/sim/cmd_vel", 10)
 
         self.create_subscription(Odometry, "/sim/odom", self._odom_cb, 10)
 
@@ -101,11 +109,18 @@ class MissionExecutor(Node):
     def _odom_cb(self, msg: Odometry):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
-        if self._last_pose is not None:
-            dx = x - self._last_pose[0]
-            dy = y - self._last_pose[1]
-            self._dist_traveled += math.sqrt(dx * dx + dy * dy)
-        self._last_pose = (x, y)
+        q = msg.pose.pose.orientation
+        yaw = math.atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
+
+        with self._odom_lock:
+            if self._last_pose is not None:
+                dx = x - self._last_pose[0]
+                dy = y - self._last_pose[1]
+                self._dist_traveled += math.sqrt(dx * dx + dy * dy)
+            self._last_pose = (x, y)
+            self._odom_x   = x
+            self._odom_y   = y
+            self._odom_yaw = yaw
 
     def _battery_loop(self):
         while self._mission_active:
@@ -120,8 +135,9 @@ class MissionExecutor(Node):
         self._last_drain_time = now
 
         drain = elapsed * self._drain_per_sec
-        drain += self._dist_traveled * self._drain_per_meter
-        self._dist_traveled = 0.0
+        with self._odom_lock:
+            drain += self._dist_traveled * self._drain_per_meter
+            self._dist_traveled = 0.0
         self._battery = max(0.0, self._battery - drain)
 
         msg = String()
@@ -163,34 +179,19 @@ class MissionExecutor(Node):
         self._marker_pub.publish(array)
 
     def _do_backup(self):
-        """Back up 0.3m to escape wall, then pause briefly."""
+        """直接发cmd_vel后退3秒脱墙。"""
         self.get_logger().info("[RX] Stuck — backing up to escape wall...")
-        if not self._backup_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().warn("Backup action server not available, skipping backup.")
-            return
-
-        goal = BackUp.Goal()
-        goal.target.x = BACKUP_DIST_M
-        goal.speed = 0.1
-
-        send_future = self._backup_client.send_goal_async(goal)
-        start = time.time()
-        while not send_future.done():
-            if time.time() - start > 5.0:
-                return
+        end = time.time() + BACKUP_DURATION
+        while time.time() < end:
+            msg = TwistStamped()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.twist.linear.x = BACKUP_SPEED
+            self._cmd_vel_pub.publish(msg)
             time.sleep(0.1)
-
-        goal_handle = send_future.result()
-        if not goal_handle.accepted:
-            return
-
-        result_future = goal_handle.get_result_async()
-        start = time.time()
-        while not result_future.done():
-            if time.time() - start > 10.0:
-                break
-            time.sleep(0.1)
-
+        # 停止
+        stop = TwistStamped()
+        stop.header.stamp = self.get_clock().now().to_msg()
+        self._cmd_vel_pub.publish(stop)
         time.sleep(0.5)
         self.get_logger().info("[RX] Backup complete.")
 
@@ -220,13 +221,53 @@ class MissionExecutor(Node):
         self.get_logger().info(f"[RX] Navigating to {zone_name}...")
 
         result_future = goal_handle.get_result_async()
-        start = time.time()
+        nav_start = time.time()
+
+        # stuck detection state
+        with self._odom_lock:
+            last_check_x   = self._odom_x
+            last_check_y   = self._odom_y
+            last_check_yaw = self._odom_yaw
+        last_check_time = time.time()
+        stuck_since     = None
+
         while not result_future.done():
-            if time.time() - start > timeout:
+            now = time.time()
+
+            # 3min total timeout
+            if now - nav_start > timeout:
                 goal_handle.cancel_goal_async()
                 time.sleep(0.5)
                 self._do_backup()
                 return False
+
+            # stuck check every 1s
+            if now - last_check_time >= 1.0:
+                with self._odom_lock:
+                    cx, cy, cyaw = self._odom_x, self._odom_y, self._odom_yaw
+
+                dist  = math.sqrt((cx - last_check_x)**2 + (cy - last_check_y)**2)
+                dangle = abs(cyaw - last_check_yaw)
+
+                if dist < STUCK_DIST_M and dangle < STUCK_ANGLE_RAD:
+                    if stuck_since is None:
+                        stuck_since = now
+                    elif now - stuck_since >= STUCK_TIME_SEC:
+                        # 卡死：cancel并后退
+                        goal_handle.cancel_goal_async()
+                        time.sleep(0.5)
+                        self._do_backup()
+                        stuck_since = None
+                        # 后退完重新发goal
+                        return self._navigate_to(zone_name, timeout - (now - nav_start))
+                else:
+                    stuck_since = None
+
+                last_check_x   = cx
+                last_check_y   = cy
+                last_check_yaw = cyaw
+                last_check_time = now
+
             time.sleep(0.1)
 
         return True
